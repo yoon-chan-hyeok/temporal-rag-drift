@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="360" viewBox="0 0 1200 360" role="img" aria-labelledby="title desc">
+  <title id="title">Temporal RAG Drift</title>
+  <desc id="desc">Detect quality regressions after knowledge-base updates.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#070B14"/>
+      <stop offset=".58" stop-color="#101827"/>
+      <stop offset="1" stop-color="#0B1220"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#2563EB"/>
+      <stop offset="1" stop-color="#34D399"/>
+    </linearGradient>
+    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M32 0H0V32" fill="none" stroke="#94A3B8" stroke-opacity=".08"/>
+    </pattern>
+    <filter id="glow"><feGaussianBlur stdDeviation="30"/></filter>
+  </defs>
+  <rect width="1200" height="360" rx="24" fill="url(#bg)"/>
+  <rect width="1200" height="360" rx="24" fill="url(#grid)"/>
+  <circle cx="1060" cy="70" r="150" fill="#2563EB" opacity=".15" filter="url(#glow)"/>
+  <circle cx="1120" cy="210" r="130" fill="#34D399" opacity=".12" filter="url(#glow)"/>
+  <rect x="70" y="54" width="58" height="6" rx="3" fill="url(#accent)"/>
+  <text x="70" y="93" fill="#34D399" font-family="Segoe UI,Arial,sans-serif" font-size="14" font-weight="800" letter-spacing="3">AI RELIABILITY · RAG EVALUATION</text>
+  <text x="70" y="151" fill="#F8FAFC" font-family="Segoe UI,Arial,sans-serif" font-size="54" font-weight="800">Temporal RAG Drift</text>
+  <text x="70" y="190" fill="#CBD5E1" font-family="Segoe UI,Arial,sans-serif" font-size="21">Detect quality regressions after knowledge-base updates.</text>
+  <path d="M930 112h150m-120-30 30 30-30 30" fill="none" stroke="url(#accent)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" opacity=".85"/>
+  <g transform="translate(70 240)">
+    <rect width="320" height="72" rx="14" fill="#101827" stroke="url(#accent)" stroke-opacity=".55"/>
+    <text x="18" y="29" fill="#94A3B8" font-size="12" font-weight="700" letter-spacing="1.5">CONFIRMATORY AUROC</text>
+    <text x="18" y="56" fill="#F8FAFC" font-size="22" font-weight="800">0.854</text>
+  </g>
+<g transform="translate(422 240)">
+    <rect width="320" height="72" rx="14" fill="#101827" stroke="url(#accent)" stroke-opacity=".55"/>
+    <text x="18" y="29" fill="#94A3B8" font-size="12" font-weight="700" letter-spacing="1.5">RISK LIFT</text>
+    <text x="18" y="56" fill="#F8FAFC" font-size="22" font-weight="800">3.59x</text>
+  </g>
+<g transform="translate(774 240)">
+    <rect width="320" height="72" rx="14" fill="#101827" stroke="url(#accent)" stroke-opacity=".55"/>
+    <text x="18" y="29" fill="#94A3B8" font-size="12" font-weight="700" letter-spacing="1.5">PROTOCOL</text>
+    <text x="18" y="56" fill="#F8FAFC" font-size="22" font-weight="800">Frozen Transfer</text>
+  </g>
+</svg>
