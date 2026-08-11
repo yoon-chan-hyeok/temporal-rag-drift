@@ -1,0 +1,66 @@
+experiment_name: mini_temporal_mock
+seed: 17
+
+dataset:
+  path: data/processed/mini_temporal_retrieved.jsonl
+  max_questions: 2
+
+conditions:
+  - current_only
+  - stale_only
+
+context:
+  mixed_order: concat
+  shuffle_mixed: false
+  include_doc_labels: true
+  doc_separator: "\n\n"
+
+generation:
+  backend: mock
+  model_name: mock
+  temperature: 0.8
+  top_p: 0.95
+  max_new_tokens: 64
+  n_samples: 3
+  n_samples_list: [2, 3]
+
+embedding:
+  primary_model: smoke-hashing
+  secondary_model: null
+  use_secondary_for_sensitivity: false
+  batch_size: 8
+  normalize: true
+  pca_dim: 3
+  allow_hashing_fallback: true
+
+clustering:
+  method: nli
+  cosine_threshold: 0.82
+  min_cluster_size: 2
+  nli_model: heuristic
+  equivalence_rule: bidirectional
+  entailment_threshold: 0.5
+  contradiction_threshold: 0.5
+
+metrics:
+  evaluator: nli
+  nli_model: heuristic
+  quality_equivalence_rule: non_defeating
+  target_by_condition:
+    current_only: current
+    stale_only: stale
+  accuracy_f1_threshold: 0.5
+  stale_f1_threshold: 0.5
+
+drift:
+  tau_shift: 1.0
+  tau_q: 0.05
+
+stats:
+  bootstrap_rounds: 100
+  permutation_rounds: 100
+  wilcoxon: true
+
+figures:
+  max_projection_points: 300
+  dpi: 120

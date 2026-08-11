@@ -1,0 +1,55 @@
+experiment_name: portfolio_clark_temporal_example
+seed: 42
+
+dataset:
+  path: data/processed/clark_temporal_example.jsonl
+  max_questions: null
+
+conditions:
+  - stale_only
+  - current_only
+
+generation:
+  backend: openai_compatible
+  model_name: your-openai-compatible-model
+  temperature: 0.8
+  top_p: 0.95
+  max_new_tokens: 96
+  n_samples: 16
+  api_key_env: OPENAI_API_KEY
+  async_concurrency: 8
+  use_condition_time_prefix: true
+  system_prompt_override: >-
+    Answer the time-conditioned question using only the retrieved context.
+    Prefer the newest directly relevant evidence available at or before the
+    evaluation date. Return only the shortest final answer.
+
+embedding:
+  primary_model: BAAI/bge-large-en-v1.5
+  batch_size: 32
+  normalize: true
+  pca_dim: 10
+  device: cuda:0
+
+clustering:
+  method: nli
+  nli_model: microsoft/deberta-large-mnli
+  nli_batch_size: 16
+  nli_device: cuda:0
+  equivalence_rule: bidirectional
+  lexical_f1_threshold: 0.92
+  numeric_mismatch_splits: true
+
+metrics:
+  compute_entropy: true
+  compute_volume: true
+  compute_centroid_shift: true
+  compute_accuracy: true
+  evaluator: nli
+  target_by_condition:
+    stale_only: stale
+    current_only: current
+
+drift:
+  enabled: false
+
