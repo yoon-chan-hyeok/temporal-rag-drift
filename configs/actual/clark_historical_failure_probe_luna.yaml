@@ -1,0 +1,133 @@
+experiment_name: clark_historical_failure_probe_luna
+seed: 42
+dataset:
+  path: data\processed\clark_historical_failure_probe\clark_historical_failure_probe.jsonl
+  max_questions: null
+conditions:
+- p1_natural
+- p2_support_presence
+- p3_support_first
+- p4_evidence_only
+- p5_fact_card
+context:
+  mixed_order: concat
+  shuffle_mixed: false
+  include_doc_labels: true
+  doc_separator: '
+
+
+    '
+generation:
+  backend: openai_compatible
+  model_name: gpt-5.6-luna
+  temperature: 0.8
+  top_p: 0.95
+  max_new_tokens: 96
+  n_samples: 16
+  n_samples_list:
+  - 4
+  - 8
+  - 16
+  system_prompt_override: 'You are answering a time-conditioned question.
+
+    Use only the provided retrieved context and treat the stated date as the
+
+    evaluation time. Do not use outside or parametric knowledge.
+
+
+    Prefer the newest directly relevant evidence available at or before that date.
+
+    If older and newer passages conflict, answer from the newest relevant passage.
+
+    Ignore passages that do not concern the entity and relation in the question.
+
+
+    If the context is insufficient, answer exactly:
+
+    The retrieved context is insufficient.
+
+
+    Return only the shortest natural-language final answer. For a yes/no question,
+
+    return only Yes or No. Do not explain, cite documents, or restate the question.'
+  use_condition_time_prefix: true
+  condition_time_prefix_template: 'As of {time}, using only evidence available up
+    to that date, answer the following question: {question}'
+  use_chat_template: true
+  request_timeout: 180
+  max_retries: 6
+  retry_min_seconds: 2
+  retry_max_seconds: 60
+  api_key_env: OPENAI_API_KEY
+  async_concurrency: 20
+  requests_per_minute: 450
+  tokens_per_minute: 180000
+  use_max_completion_tokens: true
+  omit_seed: true
+  reasoning_effort: none
+embedding:
+  primary_model: BAAI/bge-large-en-v1.5
+  secondary_model: null
+  use_secondary_for_sensitivity: false
+  batch_size: 32
+  normalize: true
+  pca_dim: 10
+  allow_hashing_fallback: false
+  device: cuda:0
+  local_files_only: true
+clustering:
+  method: nli
+  cosine_threshold: 0.82
+  min_cluster_size: 2
+  nli_model: microsoft/deberta-large-mnli
+  nli_batch_size: 16
+  nli_device: cuda:0
+  local_files_only: true
+  equivalence_rule: bidirectional
+  entailment_threshold: 0.5
+  contradiction_threshold: 0.5
+  lexical_f1_threshold: 0.92
+  numeric_mismatch_splits: true
+metrics:
+  compute_entropy: true
+  compute_volume: true
+  compute_centroid_shift: true
+  compute_accuracy: true
+  compute_stale_rate: true
+  compute_contradiction: true
+  evaluator: nli
+  nli_model: microsoft/deberta-large-mnli
+  nli_batch_size: 16
+  nli_device: cuda:0
+  local_files_only: true
+  quality_equivalence_rule: non_defeating
+  entailment_threshold: 0.5
+  contradiction_threshold: 0.5
+  lexical_f1_threshold: 0.92
+  target_by_condition:
+    p1_natural: current
+    p2_support_presence: current
+    p3_support_first: current
+    p4_evidence_only: current
+    p5_fact_card: current
+  accuracy_f1_threshold: 0.75
+  stale_f1_threshold: 0.75
+drift:
+  enabled: false
+stats:
+  bootstrap_rounds: 2000
+  permutation_rounds: 2000
+  alpha: 0.05
+  wilcoxon: true
+  comparisons:
+  - - p1_natural
+    - p2_support_presence
+  - - p1_natural
+    - p3_support_first
+  - - p1_natural
+    - p4_evidence_only
+  - - p1_natural
+    - p5_fact_card
+figures:
+  max_projection_points: 3000
+  dpi: 180

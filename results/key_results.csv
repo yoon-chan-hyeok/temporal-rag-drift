@@ -1,0 +1,3 @@
+experiment,cohort,n,positives,auroc,auprc,precision,recall,f1,risk_lift,status
+clark_t0_frozen_transfer,future_question_disjoint_confirmatory,186,28,0.854,0.433,0.541,0.714,0.615,3.59,confirmatory
+clark_t0_frozen_transfer,all_future_primary,320,60,0.870,0.539,0.592,0.750,0.662,3.16,primary

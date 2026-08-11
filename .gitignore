@@ -1,0 +1,46 @@
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Credentials
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+token.json
+credentials.json
+
+# External corpora and generated data
+data/*
+!data/README.md
+!data/processed/
+data/processed/*
+!data/processed/mini_temporal_retrieved.jsonl
+
+# Runs, indexes, caches and model artifacts
+outputs/
+cache/
+*.sqlite
+*.sqlite3
+*.db
+*.parquet
+*.arrow
+*.safetensors
+*.bin
+*.pt
+*.pth
+*.gguf
+*.log
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+desktop.ini

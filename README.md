@@ -1,70 +1,175 @@
-# Temporal RAG Drift Evaluation
+<div align="center">
 
-> 지식베이스가 갱신된 뒤 RAG의 답변이 **달라졌는가**를 넘어, 그 변화가 **품질 저하 위험인가**를 라벨 없이 탐지하는 연구형 프로젝트입니다.
+# CLARK Temporal RAG Drift Detection
 
-**Status:** Research prototype · Reproducibility package in progress
+**Detecting newly degraded questions after cumulative news-database updates**
 
-## 문제 정의
+![Python 3.11](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
+![Dataset CLARK](https://img.shields.io/badge/Dataset-CLARK--News-0F766E)
+![Protocol Frozen Transfer](https://img.shields.io/badge/Protocol-Frozen%20Temporal%20Transfer-7C3AED)
+![Tests 16 passing](https://img.shields.io/badge/Tests-16%20passing-15803D)
+![Status Research Prototype](https://img.shields.io/badge/Status-Research%20Prototype-D97706)
 
-RAG 시스템은 문서가 추가·수정되면 검색 결과와 답변 분포가 함께 변합니다. 하지만 실제 운영에서는 새 정답 라벨을 즉시 얻기 어렵기 때문에 단순한 분포 변화만으로 품질 저하를 단정할 수 없습니다.
+</div>
 
-이 프로젝트는 동일 질문을 두 지식 스냅샷 `Kx`, `Ky`에 반복 질의하여 다음을 구분하는 평가 절차를 설계합니다.
 
-- 새 지식을 반영한 정상적인 변화
-- 검색 실패나 근거 약화로 발생한 유해한 변화
-- 라벨이 생기기 전 우선 검토해야 할 고위험 질문
+## TL;DR
 
-## 내가 주도한 부분
+When a cumulative news database changes from `Kx` to `Ky`, the same fixed RAG
+agent is queried 16 times at each snapshot. A frozen detector uses the movement
+and uncertainty of the two answer distributions to rank questions at risk of a
+new accuracy drop.
 
-- 문제를 `distribution shift`가 아닌 `harmful drift risk` 탐지로 재정의
-- 지식 스냅샷과 질문 집합을 고정하는 비교 실험 설계
-- 다중 샘플 답변 분포와 검색 결과를 함께 기록하는 평가 흐름 설계
-- 프록시 지표와 실제 오류 라벨을 분리하고, 사후 라벨로 탐지력을 검증하는 기준 수립
-- 평균 점수만이 아니라 AUROC, F1, Risk Lift, McNemar 검정과 캘리브레이션을 포함한 평가안 정리
+| Item | This repository |
+|---|---|
+| Dataset | CLARK temporal questions, answer-validity spans, timestamped news evidence |
+| Retrieval | SQLite FTS5 BM25 + BGE dense retrieval + reciprocal-rank fusion |
+| Detector input | 2 normalized axes: answer-distribution shift and uncertainty change |
+| Calibration | T0 update only: 2021-12-22 to 2022-08-31 |
+| Locked evaluation | Four later cumulative-news updates, no detector retraining |
+| Confirmatory result | **AUROC 0.854, recall 0.714, F1 0.615, risk lift 3.59x** |
+| Diagnostic extension | P1-P5 evidence ladder for failure localization |
 
-## 평가 파이프라인
+The method is a **relative degradation-risk monitor**. It does not certify the
+absolute correctness of a single unseen answer.
+
+## Research Question
+
+> After a RAG database update, can answer-distribution changes identify which
+> questions newly lose performance, without using current gold answers as
+> detector inputs?
+
+Gold answers are used offline to define and evaluate new degradation. They are
+not passed to the frozen detector during future inference.
+
+## End-to-End Flow
 
 ```mermaid
 flowchart LR
-    Q["Frozen question set"] --> X["RAG on Kx"]
-    Q --> Y["RAG on Ky"]
-    X --> A["Retrieval + answer samples"]
-    Y --> B["Retrieval + answer samples"]
-    A --> M["Shift and uncertainty metrics"]
-    B --> M
-    M --> R["Risk ranking"]
-    R --> V["Delayed-label validation"]
+    A["CLARK questions + answer validity spans"] --> B["Timestamped article linkage"]
+    B --> C["Cumulative snapshots Kx and Ky"]
+    C --> D["BM25 + BGE + RRF top-k"]
+    D --> E["Fixed RAG agent: 16 samples per snapshot"]
+    E --> F["BGE embeddings + DeBERTa NLI clusters"]
+    F --> G["Shift score + uncertainty score"]
+    G --> H["T0-frozen quadratic logistic detector"]
+    H --> I["Future risk ranking"]
+    I --> J["P1-P5 probe for flagged cases"]
 ```
 
-## 검토한 신호
+## Detector
 
-| 관점 | 후보 지표 | 해석 |
-|---|---|---|
-| 생성 불확실성 | token log-probability, Semantic Entropy | 답변 내부의 불확실성 |
-| 의미 변화 | embedding centroid shift, Semantic Volume | 답변 의미 공간의 이동·확산 |
-| 분포 변화 | KS distance, Energy Distance, Cluster-JS | 두 스냅샷의 출력 분포 차이 |
-| 검색 변화 | 문서 중첩률, 순위 변화, 근거 일치성 | 생성 이전 단계의 변화 |
+For each question, the pipeline produces answer sets `Ax` and `Ay` from the old
+and updated cumulative news snapshots.
 
-> 변화량은 오류 자체가 아닙니다. 이 프로젝트의 핵심은 각 신호가 실제 실패를 얼마나 잘 선별하는지 사후 라벨로 검증하는 것입니다.
+**Shift score** is the mean T0 empirical percentile of:
 
-## 현재 한계
+- Sliced Wasserstein distance
+- RBF-MMD
+- Energy distance
+- semantic-cluster JS divergence
+- centroid gap
 
-- 즉시 사용 가능한 gold label이 없어 초기 단계는 위험도 프록시를 다룹니다.
-- 데이터셋·모델별 임계값 일반화는 아직 검증이 필요합니다.
-- 공개 가능한 원문 데이터와 실행 코드의 재현 패키지를 정리 중입니다.
+**Uncertainty score** is the mean T0 empirical percentile of:
 
-## 다음 구현 목표
+- change in semantic entropy
+- change in semantic volume
 
-- [ ] 질문·문서 스냅샷 버전 관리
-- [ ] `PostgreSQL + pgvector` 기반 실행 이력 저장
-- [ ] 질문 단위 temporal split과 누수 방지 테스트
-- [ ] Docker 실행 환경과 CI 테스트
-- [ ] 위험 임계값 캘리브레이션 및 rollback gate
-- [ ] OpenTelemetry 기반 검색·생성 추적
+A quadratic logistic model and operating threshold are fitted on T0 and then
+frozen. The confirmatory threshold was `0.784043`.
 
-자세한 학습 계획은 [LEARNING_ROADMAP.md](docs/LEARNING_ROADMAP.md)에 정리했습니다.
+## Main Result
 
-## 개발 방식
+| Evaluation cohort | N | New degradation | AUROC | AUPRC | Precision | Recall | F1 | Risk lift |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Future question-disjoint confirmatory | 186 | 28 | **0.854** | 0.433 | 0.541 | **0.714** | **0.615** | **3.59x** |
+| All future primary cases | 320 | 60 | 0.870 | 0.539 | 0.592 | 0.750 | 0.662 | 3.16x |
 
-AI 코딩 도구를 구현과 디버깅에 활용했습니다. 문제 정의, 실험 설계, 평가 기준, 결과 해석과 최종 의사결정은 직접 주도했습니다. 이후 공개되는 코드는 테스트와 재현 절차로 검증 가능하게 만드는 것을 원칙으로 합니다.
+The detector was never refitted on the four future updates. Performance varies
+by interval, so this is evidence for transfer within the measured CLARK regime,
+not a universal RAG failure detector.
 
+Raw tables: [`results/clark_t0/`](results/clark_t0/)  
+Detailed interpretation: [`docs/RESULTS.md`](docs/RESULTS.md)
+
+## Failure Probe
+
+Flagged historical cases were replayed with progressively stronger evidence:
+
+```text
+P1 natural top-k
+P2 guarantee current support is present
+P3 move current support to rank 1
+P4 provide decisive evidence only
+P5 provide a compact fact card
+```
+
+
+Across 84 questions, all 18 new-degradation cases that failed at P1 recovered
+by P5. The earliest recovery stage provides a diagnostic candidate for coverage,
+ranking, context complexity, or evidence-utilization failure. It is not treated
+as definitive causal proof.
+
+## Repository Structure
+
+```text
+assets/                  two portfolio figures
+configs/                 CLARK examples and archived experiment configs
+data/                    setup instructions + synthetic smoke fixture
+docs/                    methods, results, reproduction, limitations
+results/clark_t0/        frozen temporal-transfer tables
+results/probe/           P1-P5 probe tables
+scripts/                 CLARK preparation, retrieval, detector and probe code
+src/                     shared RAG generation, metric and retrieval modules
+tests/                   focused CLARK and pipeline unit tests
+```
+
+## Quick Verification
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m unittest discover -s tests -p "test_*.py"
+.\.venv\Scripts\python.exe scripts\run_experiment.py `
+  --config configs\mini_temporal_mock.yaml
+```
+
+The smoke run uses invented data, mock generation, hashing embeddings and
+heuristic NLI. It checks wiring only and is not a scientific result.
+
+## Full CLARK Run
+
+After obtaining CLARK data and building the local index:
+
+```powershell
+.\run_clark_t0_temporal_transfer_luna.cmd --stage prepare
+.\run_clark_t0_temporal_transfer_luna.cmd --stage cost
+.\run_clark_t0_temporal_transfer_luna.cmd --stage all --confirm-api-cost
+```
+
+See [`docs/REPRODUCIBILITY.md`](docs/REPRODUCIBILITY.md) for prerequisites and
+[`docs/CLARK_DATA_PIPELINE.md`](docs/CLARK_DATA_PIPELINE.md) for the data path.
+
+## Evidence Boundaries
+
+- Third-party news articles and CLARK source files are not redistributed.
+- API responses, model weights and local SQLite indexes are not committed.
+- The 186-case confirmatory cohort contains 28 positive events.
+- One future interval is materially weaker than the others.
+- Absolute future accuracy cannot be inferred from the risk score alone.
+- P1-P5 recovery stages are intervention-based diagnostic hypotheses.
+
+## Portfolio Notes
+
+- [Methods](docs/METHODS.md)
+- [Results](docs/RESULTS.md)
+- [Limitations](docs/LIMITATIONS.md)
+- [Korean portfolio summary](docs/PORTFOLIO_SUMMARY_KO.md)
+- [Learning & engineering roadmap](docs/LEARNING_ROADMAP.md)
+
+## Contribution Statement
+
+The project owner defined the research problem, selected the temporal protocol,
+ran and audited experiments, and revised the claim around observed failures.
+Codex was used substantially for implementation, debugging and documentation.
+The available project history does not establish independent per-file authorship.
