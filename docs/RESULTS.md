@@ -29,8 +29,6 @@ Confirmatory 95% question-clustered bootstrap intervals:
 The 2023-11 interval is substantially weaker. This prevents a claim that the
 detector has constant performance over time.
 
-![Frozen transfer surfaces](../assets/clark_t0_temporal_transfer_surface.png)
-
 ## P1-P5 probe
 
 | Cohort | N | P1 accuracy | P5 accuracy | P1 failures recovered by P5 |
@@ -52,8 +50,6 @@ Earliest recovery candidates across failure cohorts:
 Four new-degradation and three persistent-failure questions did not fail on the
 probe rerun. They are counted as no-failure-on-rerun rather than assigned a
 mechanism.
-
-![Probe accuracy](../assets/clark_probe_accuracy_by_stage.png)
 
 ## Defensible conclusion
 

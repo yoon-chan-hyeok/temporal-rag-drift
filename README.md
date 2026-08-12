@@ -21,6 +21,22 @@ RAG의 지식베이스가 업데이트되면 새 정보를 답할 수 있지만,
 
 이 프로젝트는 업데이트 전후의 답변 분포와 불확실성 변화를 이용해 검토할 질문의 우선순위를 정합니다. 위험 사례에는 P1-P5 evidence intervention을 적용해 retrieval coverage, ranking, context complexity와 evidence utilization 중 어디를 먼저 조사할지 제안합니다.
 
+## 설계 의도
+
+### 왜 CLARK를 사용했는가
+
+실제 서비스 DB를 그대로 공개하거나 과거 상태로 되돌려 반복 실험하기는 어렵습니다. CLARK에는 질문별로 정답이 유효한 시점과 외부 뉴스 근거가 연결되어 있어, 과거 시점 `Kx`와 누적 업데이트 이후 `Ky`를 같은 규칙으로 구성할 수 있습니다. 이를 이용해 "오래된 문서가 사라지고 새 문서로 교체되는 상황"이 아니라, 운영 DB처럼 기존 문서를 유지한 채 새 근거가 쌓이는 상황을 모사했습니다.
+
+CLARK는 실제 서비스 요청을 그대로 재현한 데이터가 아니라, 시간에 따른 지식 변화를 통제해 볼 수 있는 대리 환경입니다. 따라서 결과는 CLARK에서 구성한 시간축 실험으로 한정하며, 다른 도메인에서도 같은 성능이 나온다고 해석하지 않습니다.
+
+### 왜 답변 하나가 아니라 분포를 비교했는가
+
+같은 질문도 생성 과정에 따라 표현과 결론이 달라질 수 있습니다. 한 번의 정답 여부만 비교하면 우연한 결과에 민감해지므로 질문과 snapshot마다 답변을 16회 생성했습니다. 답변들을 embedding과 NLI로 묶어 분포 이동과 의미적 불확실성 변화를 감지 신호로 사용했습니다.
+
+### 왜 detector를 T0에서 고정했는가
+
+업데이트가 생길 때마다 미래 label로 threshold를 다시 맞추면 운영 시점의 성능을 과대평가할 수 있습니다. T0에서 detector와 threshold를 정한 뒤 이후 네 구간에는 그대로 적용해, 처음 정한 기준이 새로운 질문과 DB 상태에서도 유지되는지 확인했습니다.
+
 ## 방법
 
 ```mermaid
@@ -50,8 +66,6 @@ flowchart LR
 
 이는 완전한 오류 판정기가 아니라 검토 우선순위를 만드는 결과입니다. 업데이트 구간별 편차가 있었고, 가장 약한 구간의 AUROC는 `0.658`이었습니다. 전체 표와 bootstrap interval은 [Results](docs/RESULTS.md)에서 확인할 수 있습니다.
 
-![Frozen transfer surfaces](assets/clark_t0_temporal_transfer_surface.png)
-
 ## 탐지 후 진단
 
 탐지된 과거 실패를 같은 질문과 sampling 조건에서 다시 실행하고 evidence 전달만 바꿨습니다.
@@ -66,7 +80,7 @@ P5  compact fact card
 
 New-degradation 22건 중 P1에서 다시 실패한 18건은 P5까지 모두 복구됐습니다. 최초 복구 단계는 확정 원인이 아니라 다음 조사 대상을 정하는 진단 가설입니다.
 
-![Probe accuracy](assets/clark_probe_accuracy_by_stage.png)
+Risk score만으로는 "왜 위험한가"를 알 수 없기 때문에 probe를 추가했습니다. 최신 근거를 넣고, 순위를 올리고, 주변 문맥을 제거하는 식으로 한 조건씩 바꾸면 운영자가 retriever, ranking, context 구성과 generator 중 어디부터 확인할지 정할 수 있습니다.
 
 ## 구현과 재현
 
