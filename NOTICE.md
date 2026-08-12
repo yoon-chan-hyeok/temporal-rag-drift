@@ -1,6 +1,6 @@
 # Third-Party Notice
 
-This portfolio repository does not redistribute CLARK questions, article text,
+This repository does not redistribute CLARK questions, article text,
 downloaded model weights, or hosted-model response logs.
 
 External components used by the experiment include:
@@ -12,4 +12,4 @@ External components used by the experiment include:
 
 Obtain each external artifact from its official source and review its current
 license and access terms before reproduction. No software license is selected
-for this portfolio copy yet.
+for this public copy yet.
