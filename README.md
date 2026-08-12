@@ -22,15 +22,15 @@
 | **문제** | 누적 뉴스 DB 업데이트 후 같은 RAG가 새롭게 틀리기 시작할 질문은 무엇인가? |
 | **접근** | 이전·이후 답변 분포의 이동과 불확실성 변화를 2축 risk signal로 압축 |
 | **평가** | T0에서만 학습·임계값 고정 후, 이후 4개 업데이트로 temporal transfer |
-| **결과** | confirmatory cohort 186건에서 **AUROC 0.854 · F1 0.615 · Risk Lift 3.59×** |
+| **결과** | 새로 품질이 떨어진 질문 **10개 중 약 7개를 탐지**, 고위험군에서 문제 질문이 **약 3.6배 더 자주 발견** |
 | **공개 증거** | 실행 코드, 6개 테스트 모듈, frozen 결과표, 방법·한계·재현 문서 |
 
 <table>
 <tr>
-<td width="25%" align="center"><h3>0.854</h3><sub>Confirmatory<br/>AUROC</sub></td>
-<td width="25%" align="center"><h3>0.615</h3><sub>Confirmatory<br/>F1</sub></td>
-<td width="25%" align="center"><h3>3.59×</h3><sub>Degradation<br/>Risk Lift</sub></td>
-<td width="25%" align="center"><h3>4 Updates</h3><sub>Frozen Future<br/>Evaluation</sub></td>
+<td width="25%" align="center"><h3>10개 중 약 7개</h3><sub>새로 나빠진<br/>질문 탐지</sub></td>
+<td width="25%" align="center"><h3>약 3.6배</h3><sub>고위험군의<br/>문제 발견 비율</sub></td>
+<td width="25%" align="center"><h3>4회 업데이트</h3><sub>시간이 지나도<br/>같은 기준으로 검증</sub></td>
+<td width="25%" align="center"><h3>16개 테스트</h3><sub>핵심 계산과<br/>실행 흐름 검증</sub></td>
 </tr>
 </table>
 
