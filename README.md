@@ -9,19 +9,29 @@
 ![Tests](https://github.com/yoon-chan-hyeok/temporal-rag-drift/actions/workflows/tests.yml/badge.svg)
 ![Status](https://img.shields.io/badge/Status-Research%20Artifact-D97706)
 
-[핵심 결과](#핵심-결과) · [진단 프로브](#탐지-후-진단) · [빠른 검증](#빠른-검증) · [재현 문서](docs/REPRODUCIBILITY.md)
+[탐지 검증](#탐지-검증) · [진단 프로브](#탐지-후-진단) · [빠른 검증](#구현과-재현) · [재현 문서](docs/REPRODUCIBILITY.md)
 
 </div>
 
 ---
 
-## 문제
+## 운영 제약
 
-RAG의 지식베이스가 업데이트되면 새 정보를 답할 수 있지만, 기존 질문의 검색 결과와 문맥도 함께 바뀝니다. 운영 시점에는 현재 질문의 정답 라벨이 바로 없기 때문에 업데이트가 실제 성능 저하를 만들었는지 즉시 확인하기 어렵습니다.
+Temporal RAG 연구에서는 시간에 따라 달라진 gold answer로 업데이트 전후 성능을 사후 평가할 수 있습니다. 실제 운영에서는 DB를 업데이트할 때마다 모든 질문의 최신 정답을 즉시 다시 만들기 어렵습니다. 새 정보가 추가된 직후에는 전체 정확도를 계산할 수 없고, 어떤 질문부터 확인해야 하는지도 알기 어렵습니다.
 
-이 프로젝트는 업데이트 전후의 답변 분포와 불확실성 변화를 이용해 검토할 질문의 우선순위를 정합니다. 위험 사례에는 P1-P5 evidence intervention을 적용해 retrieval coverage, ranking, context complexity와 evidence utilization 중 어디를 먼저 조사할지 제안합니다.
+## 연구 질문
 
-## 설계 의도
+> Gold answer가 아직 없는 업데이트 직후, RAG의 행동 변화만으로 새롭게 성능이 저하됐을 가능성이 높은 질문을 찾을 수 있는가?
+
+탐지에서 끝내지 않고 두 번째 질문도 다뤘습니다.
+
+> 위험 질문에 evidence intervention을 적용하면 retrieval, ranking과 context 구성, evidence utilization 중 먼저 조사할 구간을 좁힐 수 있는가?
+
+Gold answer는 detector 입력으로 사용하지 않았습니다. T0에서 detector를 만들고 미래 DB 구간에 고정 적용한 뒤, gold answer는 탐지 결과를 사후 평가하는 데만 사용했습니다.
+
+## 접근과 선택 이유
+
+같은 질문을 업데이트 전후에 반복 실행하고 답변 하나가 아니라 답변 분포를 비교했습니다. 분포 이동과 불확실성 변화를 위험 신호로 만들고, 점수가 높은 질문에는 P1-P5 evidence intervention을 적용했습니다.
 
 ### 왜 CLARK를 사용했는가
 
@@ -47,7 +57,7 @@ CLARK는 실제 서비스 요청을 그대로 재현한 데이터가 아니라, 
 
 업데이트가 생길 때마다 미래 label로 threshold를 다시 맞추면 운영 시점의 성능을 과대평가할 수 있습니다. T0에서 detector와 threshold를 정한 뒤 이후 네 구간에는 그대로 적용해, 처음 정한 기준이 새로운 질문과 DB 상태에서도 유지되는지 확인했습니다.
 
-## 방법
+## 탐지 방법
 
 ```mermaid
 flowchart LR
@@ -66,7 +76,7 @@ flowchart LR
 
 세부 정의와 실험 설정은 [Methods](docs/METHODS.md)에 정리했습니다.
 
-## 핵심 결과
+## 탐지 검증
 
 주요 주장은 T0 이후 처음 등장한 질문 186건으로 구성한 confirmatory cohort 결과입니다. Detector와 threshold는 미래 구간에서 다시 맞추지 않았습니다.
 
