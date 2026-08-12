@@ -1,6 +1,6 @@
 # Curated Results
 
-Only CLARK results used in the portfolio claim are included.
+Only CLARK results referenced by the public README are included.
 
 - `clark_t0/cohort_summary.csv`: aggregate future-transfer performance and CIs
 - `clark_t0/transition_summary.csv`: four future update intervals
