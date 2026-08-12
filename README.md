@@ -1,42 +1,32 @@
-![Temporal RAG Drift — project hero](assets/project-hero.svg)
+![Temporal RAG Drift project hero](assets/project-hero.svg)
 
 <div align="center">
 
-**지식베이스 업데이트 뒤, 새로 품질이 떨어질 질문을 정답 라벨 없이 우선 탐지하는 RAG 평가 연구**
+**DB 업데이트 이후 새로 발생한 RAG 성능 저하를 label-free하게 모니터링하고, 탐지 사례에 intervention-based probing을 적용해 failure mechanism 후보를 좁히는 평가 프레임워크**
 
 ![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
 ![Protocol](https://img.shields.io/badge/Protocol-Frozen%20Temporal%20Transfer-7C3AED)
 ![Tests](https://img.shields.io/badge/Tests-16%20passing-15803D)
 ![Status](https://img.shields.io/badge/Status-Research%20Artifact-D97706)
 
-[핵심 결과](#핵심-결과) · [시스템 구조](#end-to-end-system) · [빠른 검증](#quick-verification) · [재현 문서](docs/REPRODUCIBILITY.md)
+[프레임워크](#end-to-end-system) · [평가 결과](#핵심-결과) · [진단 프로브](#from-detection-to-diagnosis) · [재현 문서](docs/REPRODUCIBILITY.md)
 
 </div>
 
 ---
 
-## 30초 요약
+## 프로젝트 개요
 
-| 질문 | 답 |
+| 구분 | 내용 |
 |---|---|
-| **문제** | 누적 뉴스 DB 업데이트 후 같은 RAG가 새롭게 틀리기 시작할 질문은 무엇인가? |
-| **접근** | 이전·이후 답변 분포의 이동과 불확실성 변화를 2축 risk signal로 압축 |
-| **평가** | T0에서만 학습·임계값 고정 후, 이후 4개 업데이트로 temporal transfer |
-| **결과** | 새로 품질이 떨어진 질문 **10개 중 약 7개를 탐지**, 고위험군에서 문제 질문이 **약 3.6배 더 자주 발견** |
-| **공개 증거** | 실행 코드, 6개 테스트 모듈, frozen 결과표, 방법·한계·재현 문서 |
+| **Monitoring target** | 누적 지식베이스 업데이트 전후에 동일 질문의 답변 분포와 불확실성이 어떻게 달라지는지 측정합니다. |
+| **Risk model** | distribution shift와 uncertainty change를 결합해 아직 gold answer가 없는 질문의 검토 우선순위를 산출합니다. |
+| **Transfer protocol** | T0에서 detector와 threshold를 고정한 뒤, 서로 다른 미래 질문으로 구성된 4개 업데이트 구간에 그대로 적용합니다. |
+| **Diagnosis** | 고위험 사례를 P1-P5 evidence intervention ladder로 재실행해 retrieval coverage, ranking, context complexity, evidence utilization 중 회복이 시작되는 지점을 찾습니다. |
 
-<table>
-<tr>
-<td width="25%" align="center"><h3>10개 중 약 7개</h3><sub>새로 나빠진<br/>질문 탐지</sub></td>
-<td width="25%" align="center"><h3>약 3.6배</h3><sub>고위험군의<br/>문제 발견 비율</sub></td>
-<td width="25%" align="center"><h3>4회 업데이트</h3><sub>시간이 지나도<br/>같은 기준으로 검증</sub></td>
-<td width="25%" align="center"><h3>16개 테스트</h3><sub>핵심 계산과<br/>실행 흐름 검증</sub></td>
-</tr>
-</table>
+이 점수는 개별 답변의 정답 확률이 아닙니다. 업데이트 뒤 새로 성능이 저하될 가능성이 높은 질문을 정렬하는 운영 신호입니다.
 
-> 이 점수는 단일 답변의 절대 정답 여부가 아니라, **새로운 품질 저하 위험의 상대적 우선순위**를 평가합니다.
-
-## Why this problem is hard
+## 문제 설정
 
 - 지식 업데이트는 검색 결과·답변 표현·정확도를 동시에 바꿉니다.
 - 운영 시점에는 현재 질문의 gold answer가 바로 존재하지 않습니다.
@@ -57,7 +47,7 @@ flowchart LR
     F --> G["Shift + uncertainty<br/>risk features"]
     G --> H["T0-frozen<br/>quadratic logistic"]
     H --> I["Future risk ranking"]
-    I --> J["P1–P5 diagnostic probe"]
+    I --> J["P1-P5 diagnostic probe"]
 ```
 
 ## Detector design
@@ -97,14 +87,14 @@ P5  compact fact card
 
 84개 질문 중 P1에서 실패한 18개 new-degradation case는 모두 P5까지 복구됐습니다. 최초 복구 단계는 coverage·ranking·context complexity·evidence utilization 중 어디를 우선 조사할지 제안하는 **진단 가설**이며, 확정적 인과 증명으로 해석하지 않습니다.
 
-## What I built
+## 구현 범위
 
 - CLARK answer-validity span과 timestamped news를 연결하는 temporal data pipeline
 - SQLite FTS5 BM25 + BGE dense retrieval + reciprocal-rank fusion
 - snapshot당 16회 고정 RAG sampling과 semantic answer clustering
 - 7개 분포·불확실성 신호와 T0-frozen detector
 - question-disjoint confirmatory evaluation과 집계 리포트
-- P1–P5 evidence intervention probe
+- P1-P5 evidence intervention probe
 - synthetic smoke fixture와 16개 unit test
 
 ## Repository map
@@ -115,7 +105,7 @@ configs/                 examples and archived experiment configs
 data/                    setup guide + synthetic smoke fixture
 docs/                    methods, results, limitations, reproduction
 results/clark_t0/        frozen temporal-transfer tables
-results/probe/           P1–P5 diagnostic tables
+results/probe/           P1-P5 diagnostic tables
 scripts/                 data, retrieval, detector and probe pipelines
 src/                     shared generation, retrieval and metric modules
 tests/                   focused CLARK and pipeline tests
@@ -141,10 +131,13 @@ smoke run은 invented data, mock generation, hashing embedding, heuristic NLI를
 - confirmatory cohort 186건 중 positive event는 28건입니다.
 - 미래 구간 하나는 다른 구간보다 성능이 유의하게 약합니다.
 - risk score만으로 미래의 절대 정확도를 추정할 수 없습니다.
-- P1–P5 복구 단계는 intervention-based diagnostic hypothesis입니다.
+- P1-P5 복구 단계는 intervention-based diagnostic hypothesis입니다.
 
-## Ownership & collaboration
+## 기여 범위
 
-연구 질문, temporal protocol, 평가 기준, 실험 의사결정, 실패 감사와 claim boundary를 직접 주도했습니다. Codex는 구현·디버깅·문서화 협업에 활용했고, 공개 결과는 테스트와 집계표로 검증 가능하게 구성했습니다.
+연구 질문 정의, temporal protocol 설계, 평가 기준과 실험 의사결정, failure audit, 결과 해석 범위를 맡았습니다. 공개 저장소에는 실행 코드와 테스트, frozen aggregate table을 함께 두어 핵심 주장을 다시 확인할 수 있게 했습니다.
 
-**Deep dive** · [Methods](docs/METHODS.md) · [Results](docs/RESULTS.md) · [Limitations](docs/LIMITATIONS.md) · [한국어 요약](docs/PORTFOLIO_SUMMARY_KO.md)
+## 문서
+
+[Methods](docs/METHODS.md) · [Results](docs/RESULTS.md) · [Limitations](docs/LIMITATIONS.md) · [한국어 요약](docs/PORTFOLIO_SUMMARY_KO.md)
+
