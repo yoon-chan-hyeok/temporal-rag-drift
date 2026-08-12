@@ -67,6 +67,19 @@ uncertainty_score = mean percentile(delta entropy, delta volume)
 
 The final risk surface is a quadratic logistic regression over these two axes.
 
+The metrics cover different changes in the answer distribution. Transport
+distances capture geometric movement, cluster-JS captures changes in semantic
+mixture, and centroid gap captures a global location change. Entropy and volume
+are kept on a separate axis because they describe answer instability rather
+than movement alone.
+
+Metric scales are not directly comparable, so every value is converted to its
+T0 empirical percentile before aggregation. This makes each component express
+how unusual the update is relative to the same calibration period. Quadratic
+logistic regression then allows curvature and a shift-uncertainty interaction
+while retaining a two-axis surface that can be inspected. Model selection and
+threshold fitting use T0 data only.
+
 ## 6. Offline outcome labels
 
 Accuracy is the fraction of 16 answers matching the answer valid at each
