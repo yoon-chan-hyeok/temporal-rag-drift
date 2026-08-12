@@ -6,7 +6,7 @@
 
 ![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
 ![Protocol](https://img.shields.io/badge/Protocol-Frozen%20Temporal%20Transfer-7C3AED)
-![Tests](https://img.shields.io/badge/Tests-16%20passing-15803D)
+![Tests](https://github.com/yoon-chan-hyeok/temporal-rag-drift/actions/workflows/tests.yml/badge.svg)
 ![Status](https://img.shields.io/badge/Status-Research%20Artifact-D97706)
 
 [핵심 결과](#핵심-결과) · [진단 프로브](#탐지-후-진단) · [빠른 검증](#빠른-검증) · [재현 문서](docs/REPRODUCIBILITY.md)
@@ -32,6 +32,16 @@ CLARK는 실제 서비스 요청을 그대로 재현한 데이터가 아니라, 
 ### 왜 답변 하나가 아니라 분포를 비교했는가
 
 같은 질문도 생성 과정에 따라 표현과 결론이 달라질 수 있습니다. 한 번의 정답 여부만 비교하면 우연한 결과에 민감해지므로 질문과 snapshot마다 답변을 16회 생성했습니다. 답변들을 embedding과 NLI로 묶어 분포 이동과 의미적 불확실성 변화를 감지 신호로 사용했습니다.
+
+### 왜 여러 shift 지표와 uncertainty를 분리했는가
+
+분포 변화는 한 가지 모양으로만 나타나지 않습니다. 답변 군집의 위치가 움직일 수도 있고, 일부 답변만 멀어지거나 의미 군집의 비율이 달라질 수도 있습니다. SWD, RBF-MMD, Energy distance, semantic-cluster JS와 centroid gap을 함께 사용한 이유입니다. 반면 semantic entropy와 volume은 답변이 얼마나 흔들리는지를 나타냅니다. 무엇이 달라졌는지와 얼마나 불안정해졌는지를 구분하기 위해 shift와 uncertainty를 두 축으로 나눴습니다.
+
+지표마다 값의 범위가 달라 raw value를 바로 평균내면 단위가 큰 지표가 결과를 좌우할 수 있습니다. 각 지표를 T0 기준의 경험적 percentile로 바꾼 뒤 같은 비중으로 결합해, "평소보다 얼마나 이례적인가"라는 공통 기준으로 맞췄습니다.
+
+### 왜 quadratic logistic을 사용했는가
+
+위험이 shift나 uncertainty 하나에만 비례한다고 가정하지 않았습니다. 두 값이 함께 높을 때 위험이 커지는 상호작용과 완만한 곡률을 표현하면서도, 복잡한 black-box model보다 어떤 조합에서 점수가 높아졌는지 확인하기 쉬운 quadratic logistic을 선택했습니다. Class imbalance는 balanced weight로 처리하고, model family와 hyperparameter는 T0 안에서만 결정했습니다.
 
 ### 왜 detector를 T0에서 고정했는가
 
