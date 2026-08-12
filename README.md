@@ -9,13 +9,23 @@
 ![Tests](https://img.shields.io/badge/Tests-16%20passing-15803D)
 ![Status](https://img.shields.io/badge/Status-Research%20Artifact-D97706)
 
-[프레임워크](#end-to-end-system) · [평가 결과](#핵심-결과) · [진단 프로브](#from-detection-to-diagnosis) · [재현 문서](docs/REPRODUCIBILITY.md)
+[시스템 흐름](#시스템-흐름) · [평가 결과](#핵심-결과) · [진단 프로브](#탐지-후-진단) · [재현 문서](docs/REPRODUCIBILITY.md)
 
 </div>
 
 ---
 
-## 프로젝트 개요
+## 이 프로젝트는
+
+RAG의 지식베이스를 업데이트하면 새로운 정보를 답할 수 있게 되지만, 기존에 잘 답하던 질문의 검색 결과와 문맥 구성도 함께 바뀝니다. 문제는 이 변화가 실제 성능 저하로 이어졌는지 바로 확인할 정답 라벨이 운영 시점에는 없다는 점입니다. 이 프로젝트는 업데이트 전후의 답변 분포와 불확실성 변화를 이용해 새로 위험해진 질문을 먼저 찾습니다.
+
+탐지에서 끝내지 않았습니다. 위험 사례에 evidence intervention을 단계적으로 적용해, 최신 근거가 없어서 실패했는지, 순위가 낮아서 놓쳤는지, 문맥이 복잡해서 근거를 사용하지 못했는지 확인합니다. 따라서 결과는 단순한 drift score가 아니라 검토할 질문과 조사할 failure mechanism 후보를 함께 제시합니다.
+
+### 시작한 이유
+
+RAG 평가는 보통 고정된 데이터셋의 평균 정확도를 비교합니다. 실제 운영에서는 DB가 계속 바뀌고, 라벨은 늦게 들어오며, 같은 질문도 sampling에 따라 답변이 달라집니다. 이 조건에서 업데이트 직후의 회귀를 찾고 원인 조사까지 연결하는 평가 절차가 필요해 시작했습니다.
+
+## 상세 설명
 
 | 구분 | 내용 |
 |---|---|
@@ -35,7 +45,7 @@
 
 그래서 “변화가 컸다”와 “실제로 새로 망가졌다”를 구분하고, detector를 미래 구간에서 다시 맞추지 않는 **frozen transfer protocol**을 사용했습니다.
 
-## End-to-end system
+## 시스템 흐름
 
 ```mermaid
 flowchart LR
@@ -50,7 +60,7 @@ flowchart LR
     I --> J["P1-P5 diagnostic probe"]
 ```
 
-## Detector design
+## 탐지기 설계
 
 이전 snapshot의 답변 집합 `Ax`와 업데이트 후 답변 집합 `Ay`에서 다음 신호를 계산합니다.
 
@@ -73,7 +83,7 @@ flowchart LR
 - 상세 결과: [docs/RESULTS.md](docs/RESULTS.md)
 - 공개 집계표: [results/clark_t0/](results/clark_t0/)
 
-## From detection to diagnosis
+## 탐지 후 진단
 
 탐지된 역사적 실패를 더 강한 evidence 조건으로 순차 재생했습니다.
 
@@ -97,7 +107,7 @@ P5  compact fact card
 - P1-P5 evidence intervention probe
 - synthetic smoke fixture와 16개 unit test
 
-## Repository map
+## 저장소 구성
 
 ```text
 assets/                  portfolio hero artwork
@@ -111,7 +121,7 @@ src/                     shared generation, retrieval and metric modules
 tests/                   focused CLARK and pipeline tests
 ```
 
-## Quick verification
+## 빠른 검증
 
 ```powershell
 python -m venv .venv
@@ -124,7 +134,7 @@ smoke run은 invented data, mock generation, hashing embedding, heuristic NLI를
 
 전체 CLARK 실행은 [재현 문서](docs/REPRODUCIBILITY.md)와 [데이터 파이프라인](docs/CLARK_DATA_PIPELINE.md)을 따릅니다.
 
-## Evidence boundaries
+## 해석 및 공개 범위
 
 - CLARK 원천 파일과 제3자 뉴스 기사는 재배포하지 않습니다.
 - API 응답, 모델 가중치, local SQLite index는 공개하지 않습니다.
@@ -140,4 +150,5 @@ smoke run은 invented data, mock generation, hashing embedding, heuristic NLI를
 ## 문서
 
 [Methods](docs/METHODS.md) · [Results](docs/RESULTS.md) · [Limitations](docs/LIMITATIONS.md) · [한국어 요약](docs/PORTFOLIO_SUMMARY_KO.md)
+
 
