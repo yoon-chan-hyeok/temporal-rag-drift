@@ -1,8 +1,8 @@
-![Temporal RAG Drift project hero](assets/project-hero.svg)
+![Temporal RAG Failure Detection project hero](assets/project-hero.svg)
 
 <div align="center">
 
-**DB 업데이트 이후 새로 위험해진 RAG 질문을 라벨 없이 우선순위화하고, evidence intervention으로 조사할 실패 구간을 좁히는 평가 프레임워크**
+**DB 업데이트 이후 새롭게 실패했을 가능성이 높은 RAG 질문을 라벨 없이 탐지하고, evidence intervention으로 조사할 구간을 좁히는 평가 프레임워크**
 
 ![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
 ![Protocol](https://img.shields.io/badge/Protocol-Frozen%20Temporal%20Transfer-7C3AED)
@@ -15,13 +15,23 @@
 
 ---
 
+## 프로젝트 맥락
+
+| 구분 | 내용 |
+|---|---|
+| 작업 형태 | 개인 연구 프로젝트 |
+| 담당 | 연구 질문, temporal protocol, failure detector, intervention probe, 평가와 공개 구현 |
+| 공개 범위 | 실행 코드, 테스트, 핵심 집계 결과와 재현 문서 |
+
+저장소 이름에는 연구 초기에 사용한 `temporal-rag-drift`를 유지했습니다. 포트폴리오에서는 수행한 작업이 바로 드러나도록 **Temporal RAG Failure Detection**으로 표시합니다.
+
 ## 운영 제약
 
 Temporal RAG 연구에서는 시간에 따라 달라진 gold answer로 업데이트 전후 성능을 사후 평가할 수 있습니다. 실제 운영에서는 DB를 업데이트할 때마다 모든 질문의 최신 정답을 즉시 다시 만들기 어렵습니다. 새 정보가 추가된 직후에는 전체 정확도를 계산할 수 없고, 어떤 질문부터 확인해야 하는지도 알기 어렵습니다.
 
 ## 연구 질문
 
-> Gold answer가 아직 없는 업데이트 직후, RAG의 행동 변화만으로 새롭게 성능이 저하됐을 가능성이 높은 질문을 찾을 수 있는가?
+> Gold answer가 아직 없는 업데이트 직후, RAG의 행동 변화만으로 새롭게 실패했을 가능성이 높은 질문을 탐지할 수 있는가?
 
 탐지에서 끝내지 않고 두 번째 질문도 다뤘습니다.
 
