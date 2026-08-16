@@ -20,7 +20,8 @@
 | 구분 | 내용 |
 |---|---|
 | 작업 형태 | 개인 연구 프로젝트 |
-| 담당 | 연구 질문, temporal protocol, failure detector, intervention probe, 평가와 공개 구현 |
+| 담당 | 연구 질문, temporal protocol, failure detector, intervention probe, 평가와 결과 해석 |
+| 구현 방식 | Codex를 활용한 코드 작성·수정과 반복 검증 |
 | 공개 범위 | 실행 코드, 테스트, 핵심 집계 결과와 재현 문서 |
 
 저장소 이름에는 연구 초기에 사용한 `temporal-rag-drift`를 유지했습니다. 포트폴리오에서는 수행한 작업이 바로 드러나도록 **Temporal RAG Failure Detection**으로 표시합니다.
@@ -38,6 +39,12 @@ Temporal RAG 연구에서는 시간에 따라 달라진 gold answer로 업데이
 > 위험 질문에 evidence intervention을 적용하면 retrieval, ranking과 context 구성, evidence utilization 중 먼저 조사할 구간을 좁힐 수 있는가?
 
 Gold answer는 detector 입력으로 사용하지 않았습니다. T0에서 detector를 만들고 미래 DB 구간에 고정 적용한 뒤, gold answer는 탐지 결과를 사후 평가하는 데만 사용했습니다.
+
+## 가설이 바뀐 과정
+
+처음에는 harmful update라면 answer shift와 uncertainty가 모두 높을 것으로 예상했습니다. 그러나 evolving knowledge에서는 uncertainty가 낮은데도 최신 정보에 적응하지 못한 confident failure가 있었고, 정상적으로 답이 바뀐 경우에도 shift가 크게 나타났습니다. 두 값을 각각 낮음과 높음으로 나눈 사분면 규칙만으로는 두 경우를 안정적으로 구분하지 못했습니다.
+
+여러 shift·uncertainty feature와 classifier를 비교한 뒤, 최종 confirmatory 경로에서는 T0의 두 축과 상호작용을 학습한 quadratic logistic을 고정했습니다. Absolute future accuracy를 직접 예측하는 회귀도 시도했지만 future `R²`가 약 `0.078`에 그쳤습니다. 그래서 이 프로젝트의 목표를 정답 확률 예측이 아니라, DB 업데이트 뒤 새롭게 성능이 저하될 질문의 검토 순위를 정하는 문제로 좁혔습니다.
 
 ## 접근과 선택 이유
 
@@ -138,6 +145,6 @@ Smoke run은 배선과 실행 절차만 확인합니다. CLARK 실험을 다시 
 
 ## 기여
 
-연구 질문, temporal protocol, 평가 기준, detector, failure probe, 결과 감사와 해석 범위를 설계했습니다. 공개 저장소에는 실행 코드, 테스트와 핵심 집계표를 함께 두었습니다.
+연구 질문, 가설, temporal protocol, 평가 기준, detector, failure probe와 결과 해석 범위를 설계했습니다. Codex를 활용해 실험 코드와 테스트를 반복 수정·검증했고, 공개 저장소에는 실행 코드와 핵심 집계표를 함께 두었습니다.
 
 [Methods](docs/METHODS.md) · [Results](docs/RESULTS.md) · [Limitations](docs/LIMITATIONS.md) · [Reproducibility](docs/REPRODUCIBILITY.md)
