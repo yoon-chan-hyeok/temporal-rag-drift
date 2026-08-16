@@ -9,7 +9,7 @@
 ![Tests](https://github.com/yoon-chan-hyeok/temporal-rag-drift/actions/workflows/tests.yml/badge.svg)
 ![Status](https://img.shields.io/badge/Status-Research%20Artifact-D97706)
 
-[탐지 검증](#탐지-검증) · [진단 프로브](#탐지-후-진단) · [빠른 검증](#구현과-재현) · [재현 문서](docs/REPRODUCIBILITY.md)
+[핵심 요약](#핵심-요약) · [탐지 검증](#탐지-검증) · [진단 프로브](#탐지-후-진단) · [빠른 검증](#구현과-재현) · [재현 문서](docs/REPRODUCIBILITY.md)
 
 </div>
 
@@ -25,6 +25,16 @@
 | 공개 범위 | 실행 코드, 테스트, 핵심 집계 결과와 재현 문서 |
 
 저장소 이름에는 연구 초기에 사용한 `temporal-rag-drift`를 유지했습니다. 포트폴리오에서는 수행한 작업이 바로 드러나도록 **Temporal RAG Failure Detection**으로 표시합니다.
+
+## 핵심 요약
+
+| 구분 | 내용 |
+|---|---|
+| 운영 문제 | DB 업데이트 직후에는 최신 gold answer가 없어 어떤 질문부터 다시 확인해야 할지 알기 어렵습니다. |
+| 구현 | 업데이트 전후 답변 분포와 불확실성의 변화를 이용해 위험 질문의 순위를 만들고, evidence intervention으로 조사할 구간을 좁혔습니다. |
+| 핵심 결과 | 미래 질문 186건 중 새 저하 28건을 평가했을 때 AUROC `0.854`, Recall `0.714`, F1 `0.615`를 기록했습니다. |
+| 운영 해석 | Detector가 고른 검토 집합에는 새 저하 사례가 전체 발생률 대비 `3.59배` 더 밀집했습니다. 오류를 확정하는 대신 검토 예산을 위험 질문에 먼저 쓰는 용도입니다. |
+| 한계 | 가장 약한 업데이트 구간의 AUROC는 `0.658`이었으며, risk score와 probe 결과를 오류 확률이나 확정 원인으로 해석할 수는 없습니다. |
 
 ## 운영 제약
 
@@ -46,35 +56,9 @@ Gold answer는 detector 입력으로 사용하지 않았습니다. T0에서 dete
 
 여러 shift·uncertainty feature와 classifier를 비교한 뒤, 최종 confirmatory 경로에서는 T0의 두 축과 상호작용을 학습한 quadratic logistic을 고정했습니다. Absolute future accuracy를 직접 예측하는 회귀도 시도했지만 future `R²`가 약 `0.078`에 그쳤습니다. 그래서 이 프로젝트의 목표를 정답 확률 예측이 아니라, DB 업데이트 뒤 새롭게 성능이 저하될 질문의 검토 순위를 정하는 문제로 좁혔습니다.
 
-## 접근과 선택 이유
+## 방법과 설계 선택
 
-같은 질문을 업데이트 전후에 반복 실행하고 답변 하나가 아니라 답변 분포를 비교했습니다. 분포 이동과 불확실성 변화를 위험 신호로 만들고, 점수가 높은 질문에는 P1-P5 evidence intervention을 적용했습니다.
-
-### 왜 CLARK를 사용했는가
-
-실제 서비스 DB를 그대로 공개하거나 과거 상태로 되돌려 반복 실험하기는 어렵습니다. CLARK에는 질문별로 정답이 유효한 시점과 외부 뉴스 근거가 연결되어 있어, 과거 시점 `Kx`와 누적 업데이트 이후 `Ky`를 같은 규칙으로 구성할 수 있습니다. 이를 이용해 "오래된 문서가 사라지고 새 문서로 교체되는 상황"이 아니라, 운영 DB처럼 기존 문서를 유지한 채 새 근거가 쌓이는 상황을 모사했습니다.
-
-CLARK는 실제 서비스 요청을 그대로 재현한 데이터가 아니라, 시간에 따른 지식 변화를 통제해 볼 수 있는 대리 환경입니다. 따라서 결과는 CLARK에서 구성한 시간축 실험으로 한정하며, 다른 도메인에서도 같은 성능이 나온다고 해석하지 않습니다.
-
-### 왜 답변 하나가 아니라 분포를 비교했는가
-
-같은 질문도 생성 과정에 따라 표현과 결론이 달라질 수 있습니다. 한 번의 정답 여부만 비교하면 우연한 결과에 민감해지므로 질문과 snapshot마다 답변을 16회 생성했습니다. 답변들을 embedding과 NLI로 묶어 분포 이동과 의미적 불확실성 변화를 감지 신호로 사용했습니다.
-
-### 왜 여러 shift 지표와 uncertainty를 분리했는가
-
-분포 변화는 한 가지 모양으로만 나타나지 않습니다. 답변 군집의 위치가 움직일 수도 있고, 일부 답변만 멀어지거나 의미 군집의 비율이 달라질 수도 있습니다. SWD, RBF-MMD, Energy distance, semantic-cluster JS와 centroid gap을 함께 사용한 이유입니다. 반면 semantic entropy와 volume은 답변이 얼마나 흔들리는지를 나타냅니다. 무엇이 달라졌는지와 얼마나 불안정해졌는지를 구분하기 위해 shift와 uncertainty를 두 축으로 나눴습니다.
-
-지표마다 값의 범위가 달라 raw value를 바로 평균내면 단위가 큰 지표가 결과를 좌우할 수 있습니다. 각 지표를 T0 기준의 경험적 percentile로 바꾼 뒤 같은 비중으로 결합해, "평소보다 얼마나 이례적인가"라는 공통 기준으로 맞췄습니다.
-
-### 왜 quadratic logistic을 사용했는가
-
-위험이 shift나 uncertainty 하나에만 비례한다고 가정하지 않았습니다. 두 값이 함께 높을 때 위험이 커지는 상호작용과 완만한 곡률을 표현하면서도, 복잡한 black-box model보다 어떤 조합에서 점수가 높아졌는지 확인하기 쉬운 quadratic logistic을 선택했습니다. Class imbalance는 balanced weight로 처리하고, model family와 hyperparameter는 T0 안에서만 결정했습니다.
-
-### 왜 detector를 T0에서 고정했는가
-
-업데이트가 생길 때마다 미래 label로 threshold를 다시 맞추면 운영 시점의 성능을 과대평가할 수 있습니다. T0에서 detector와 threshold를 정한 뒤 이후 네 구간에는 그대로 적용해, 처음 정한 기준이 새로운 질문과 DB 상태에서도 유지되는지 확인했습니다.
-
-## 탐지 방법
+같은 질문을 업데이트 전후에 반복 실행하고, 답변 하나의 정오 대신 답변 분포와 불확실성이 어떻게 달라졌는지 비교했습니다. Detector가 위험하다고 본 질문에는 P1-P5 evidence intervention을 적용했습니다.
 
 ```mermaid
 flowchart LR
@@ -85,6 +69,14 @@ flowchart LR
     E --> F["Future risk<br/>ranking"]
     F --> G["P1-P5 evidence<br/>probe"]
 ```
+
+| 설계 선택 | 이유와 해석 범위 |
+|---|---|
+| CLARK 누적 snapshot | 질문별 유효 시점과 외부 뉴스 근거를 이용해 기존 문서는 남고 새 근거가 쌓이는 DB 업데이트를 모사했습니다. 실제 서비스 요청을 그대로 재현한 것은 아니므로 결과는 이 시간축 실험에 한정합니다. |
+| 조건별 답변 16회 생성 | 한 번의 생성 결과에 좌우되지 않도록 embedding과 NLI로 답변을 묶고, 분포 이동과 의미적 불확실성을 측정했습니다. |
+| Shift와 uncertainty 분리 | SWD, RBF-MMD, Energy distance, semantic-cluster JS, centroid gap으로 변화의 모양을 보고, semantic entropy와 volume으로 답변의 흔들림을 봤습니다. 단위가 다른 지표는 T0 경험적 percentile로 바꿔 비교했습니다. |
+| Quadratic logistic | 두 축의 상호작용과 곡률을 표현하면서도 점수가 높아진 조합을 확인할 수 있는 모델을 택했습니다. Class imbalance에는 balanced weight를 적용했고, model family와 hyperparameter는 T0 안에서만 정했습니다. |
+| T0-frozen 평가 | 미래 label을 보고 기준을 다시 맞추지 않도록 detector와 threshold를 T0에서 고정하고 이후 네 구간에 그대로 적용했습니다. |
 
 - retrieval: SQLite FTS5 BM25와 BGE dense retrieval을 reciprocal-rank fusion으로 결합
 - monitoring signal: SWD, RBF-MMD, Energy distance, semantic-cluster JS, centroid gap, semantic entropy와 volume 변화
@@ -101,7 +93,7 @@ flowchart LR
 |---|---:|---:|---:|---:|---:|---:|
 | **Future question-disjoint confirmatory** | 186 | 28 | **0.854** | **0.714** | **0.615** | **3.59×** |
 
-이는 완전한 오류 판정기가 아니라 검토 우선순위를 만드는 결과입니다. 업데이트 구간별 편차가 있었고, 가장 약한 구간의 AUROC는 `0.658`이었습니다. 전체 표와 bootstrap interval은 [Results](docs/RESULTS.md)에서 확인할 수 있습니다.
+Risk lift `3.59배`는 detector가 고른 검토 집합의 새 저하 비율이 같은 cohort 전체 발생률보다 그만큼 높았다는 뜻입니다. 이는 완전한 오류 판정기가 아니라 검토 우선순위를 만드는 결과입니다. 업데이트 구간별 편차가 있었고, 가장 약한 구간의 AUROC는 `0.658`이었습니다. 전체 표와 bootstrap interval은 [Results](docs/RESULTS.md)에서 확인할 수 있습니다.
 
 ## 탐지 후 진단
 
@@ -115,7 +107,7 @@ P4  decisive evidence only
 P5  compact fact card
 ```
 
-New-degradation 22건 중 P1에서 다시 실패한 18건은 P5까지 모두 복구됐습니다. 최초 복구 단계는 확정 원인이 아니라 다음 조사 대상을 정하는 진단 가설입니다.
+탐지 성능을 평가한 confirmatory cohort의 28건과 이 probe의 22건은 같은 표본이 아닙니다. Probe는 evidence 조건을 바꿔가며 다시 실행할 수 있도록 별도로 고정한 과거 failure cohort입니다. 이 22건 중 P1에서 다시 실패한 18건은 P5까지 모두 복구됐습니다. 최초 복구 단계는 확정 원인이 아니라 다음 조사 대상을 정하는 진단 가설입니다.
 
 Risk score만으로는 "왜 위험한가"를 알 수 없기 때문에 probe를 추가했습니다. 최신 근거를 넣고, 순위를 올리고, 주변 문맥을 제거하는 식으로 한 조건씩 바꾸면 운영자가 retriever, ranking, context 구성과 generator 중 어디부터 확인할지 정할 수 있습니다.
 
