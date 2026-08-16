@@ -1,70 +1,62 @@
-![Temporal RAG Failure Detection project hero](assets/project-hero.svg)
+![Temporal RAG Failure Detection](assets/project-hero.svg)
 
 <div align="center">
 
-**DB 업데이트 이후 새롭게 실패했을 가능성이 높은 RAG 질문을 라벨 없이 탐지하고, evidence intervention으로 조사할 구간을 좁히는 평가 프레임워크**
+**지식베이스가 바뀐 직후, 정답 라벨 없이 위험 질문을 선별하고 원인 조사 순서를 좁힙니다.**
 
 ![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
 ![Protocol](https://img.shields.io/badge/Protocol-Frozen%20Temporal%20Transfer-7C3AED)
 ![Tests](https://github.com/yoon-chan-hyeok/temporal-rag-drift/actions/workflows/tests.yml/badge.svg)
-![Status](https://img.shields.io/badge/Status-Research%20Artifact-D97706)
-
-[문제와 목표](#문제와-목표) · [방법](#방법) · [검증 결과](#검증-결과) · [실행](#실행) · [해석 범위](#해석-범위)
 
 </div>
 
----
+## 문제
 
-## 프로젝트 맥락
+RAG의 지식베이스를 업데이트하면 일부 질문은 더 잘 풀리지만, 이전에는 맞히던 질문이 새롭게 틀릴 수도 있습니다. 연구 환경에서는 최신 정답을 만들어 전후 정확도를 비교할 수 있습니다. 운영 환경에서는 업데이트할 때마다 모든 질문의 정답을 다시 만드는 일이 현실적이지 않습니다.
 
-| 구분 | 내용 |
-|---|---|
-| 작업 형태 | 개인 연구 프로젝트 |
-| 담당 | 연구 질문, temporal protocol, failure detector, intervention probe, 평가와 결과 해석 |
-| 구현 방식 | Codex를 활용한 코드 작성·수정과 반복 검증 |
-| 공개 범위 | 실행 코드, 테스트, 핵심 집계 결과와 재현 문서 |
+이 프로젝트는 정답이 아직 없는 시점에 RAG의 응답 변화만 보고 검토할 질문의 순서를 정합니다. 위험 신호가 잡힌 질문에는 근거 문서를 단계적으로 바꾸는 실험을 적용해 검색, 순위와 문맥 구성, 근거 활용 중 어디부터 살펴볼지도 좁힙니다.
 
-저장소 이름에는 연구 초기에 사용한 `temporal-rag-drift`를 유지했습니다. 포트폴리오에서는 수행한 작업이 바로 드러나도록 **Temporal RAG Failure Detection**으로 표시합니다.
-
-## 문제와 목표
-
-실제 운영에서는 DB를 업데이트할 때마다 모든 질문의 최신 정답을 바로 만들기 어렵습니다. 이 때문에 업데이트 직후에는 전체 정확도를 계산할 수 없고 어떤 질문부터 확인해야 하는지도 알 수 없습니다.
-
-이 프로젝트는 업데이트 전후 RAG의 행동 변화만으로 새 저하 가능성이 높은 질문의 검토 순위를 만들고, 탐지된 질문에는 evidence intervention을 적용해 retrieval, ranking과 context 구성, evidence utilization 중 먼저 조사할 구간을 좁힙니다. Gold answer는 detector 입력이 아니라 미래 구간의 탐지 결과를 사후 평가할 때만 사용했습니다.
-
-## 방법
+## 설계
 
 ```mermaid
 flowchart LR
-    A["Cumulative knowledge<br/>snapshots Kx and Ky"] --> B["Fixed hybrid<br/>retrieval"]
-    B --> C["16 answer samples<br/>per condition"]
-    C --> D["Shift and uncertainty<br/>features"]
-    D --> E["T0-frozen<br/>detector"]
-    E --> F["Future risk<br/>ranking"]
-    F --> G["P1-P5 evidence<br/>probe"]
+    A["누적 지식 스냅샷<br/>Kx → Ky"] --> B["고정된 하이브리드 검색"]
+    B --> C["조건별 응답 16회"]
+    C --> D["응답 이동과 불확실성"]
+    D --> E["T0에서 고정한 탐지기"]
+    E --> F["미래 질문 위험 순위"]
+    F --> G["P1-P5 근거 개입"]
 ```
 
-| 설계 | 선택 이유 |
-|---|---|
-| CLARK 누적 snapshot | 기존 문서는 남고 새 근거가 쌓이는 DB 업데이트를 같은 규칙으로 구성하기 위해 사용했습니다. 실제 서비스의 대리 환경이므로 결과는 이 시간축 실험에 한정합니다. |
-| 조건별 답변 16회 | 한 번의 생성 결과에 좌우되지 않도록 embedding과 NLI로 답변 분포를 만들었습니다. SWD, RBF-MMD, Energy distance, semantic-cluster JS, centroid gap과 uncertainty 변화를 신호로 사용했습니다. |
-| Quadratic logistic | 단순한 shift·uncertainty 사분면은 confident failure와 정상적인 answer shift를 안정적으로 나누지 못했습니다. 두 축의 상호작용과 곡률을 반영하되 결과를 해석할 수 있는 모델을 선택했습니다. |
-| T0-frozen 평가 | 미래 label을 보고 기준을 다시 맞추지 않도록 detector와 threshold를 T0에서 정한 뒤 질문이 겹치지 않는 미래 네 구간에 그대로 적용했습니다. |
-| P1-P5 probe | 최신 근거의 포함, 순위와 주변 문맥을 단계적으로 바꿔 최초 복구 지점을 기록했습니다. 이 지점은 확정 원인이 아니라 다음 조사 대상을 정하는 가설입니다. |
+### 시간 순서를 지키는 평가
 
-Retrieval은 SQLite FTS5 BM25와 BGE dense retrieval을 reciprocal-rank fusion으로 결합했습니다. 세부 정의와 설정은 [Methods](docs/METHODS.md)에 있습니다.
+CLARK의 질문별 유효 시점과 뉴스 근거를 이용해 과거 상태 `Kx`와 업데이트 이후 상태 `Ky`를 만들었습니다. 새 문서가 들어올 때 기존 문서를 지우지 않고 누적해 실제 지식베이스 업데이트에 가까운 조건을 구성했습니다. 검색기는 SQLite FTS5 BM25와 BGE dense retrieval을 reciprocal-rank fusion으로 결합하고 전 구간에서 고정했습니다.
 
-## 검증 결과
+탐지기와 임계값은 초기 구간 T0에서만 정했습니다. 이후 네 구간에는 다시 맞추지 않았고, T0에 없던 질문만 평가에 사용했습니다. 미래 라벨을 보고 기준을 조정하는 누수를 막기 위한 설계입니다.
 
-주요 결과는 T0 이후 처음 등장한 질문으로 구성한 confirmatory cohort입니다.
+### 한 번의 답이 아닌 응답 분포
 
-| Cohort | N | New degradation | AUROC | Recall | F1 | Risk lift |
+같은 질문도 생성할 때마다 표현과 결론이 달라질 수 있어 조건별로 16개 응답을 수집했습니다. 임베딩 거리와 NLI 군집을 이용해 응답 분포의 이동을 측정하고, 의미 엔트로피와 분포 부피로 불확실성 변화를 따로 계산했습니다. 서로 단위가 다른 지표는 T0의 경험적 백분위로 바꿔 비교했습니다.
+
+초기에는 이동과 불확실성을 높고 낮음으로 나눈 단순 규칙을 시도했습니다. 하지만 최신 정보에 적응하지 못한 채 확신하는 실패와, 정상적으로 답이 바뀐 경우를 구분하기 어려웠습니다. 최종 탐지기는 두 축의 상호작용과 곡률을 반영하는 quadratic logistic으로 고정했습니다.
+
+### 탐지 이후의 조사
+
+위험 점수만으로는 실패가 시작된 위치를 알 수 없습니다. 그래서 최신 근거의 포함 여부, 검색 순위, 주변 문맥을 P1부터 P5까지 한 단계씩 바꾸고 처음 복구되는 조건을 기록했습니다. 이 값은 확정 원인이 아니라 엔지니어가 먼저 확인할 구간을 정하는 진단 단서입니다.
+
+세부 지표와 실험 설정은 [Methods](docs/METHODS.md)에 정리했습니다.
+
+## 결과
+
+주요 평가는 T0 이후 처음 등장한 질문 186건으로 구성했습니다.
+
+| 평가 집합 | 질문 | 새 성능 저하 | AUROC | Recall | F1 | Risk lift |
 |---|---:|---:|---:|---:|---:|---:|
-| **Future question-disjoint confirmatory** | 186 | 28 | **0.854** | **0.714** | **0.615** | **3.59×** |
+| Future question-disjoint | 186 | 28 | **0.854** | **0.714** | **0.615** | **3.59×** |
 
-Risk lift `3.59배`는 detector가 고른 검토 집합에 새 저하 사례가 같은 cohort의 전체 발생률보다 더 밀집했다는 뜻입니다. 오류를 확정하는 도구가 아니라 제한된 검토 시간을 위험 질문에 먼저 쓰기 위한 결과입니다. 구간별 편차가 있었고 가장 약한 구간의 AUROC는 `0.658`이었습니다.
+탐지기가 고른 검토 집합에는 새 성능 저하 사례가 전체 발생률보다 3.59배 많이 모였습니다. 모든 오류를 자동 판정하는 용도가 아니라, 같은 검토 인력으로 위험 사례를 먼저 확인하기 위한 결과입니다. 업데이트 구간별 편차는 남았고 가장 약한 구간의 AUROC는 `0.658`이었습니다.
 
-별도로 고정한 과거 failure cohort 22건에는 evidence probe를 적용했습니다. P1에서 다시 실패한 18건은 P5까지 모두 복구됐습니다. 이 22건은 위 confirmatory cohort의 새 저하 28건과 같은 표본이 아닙니다. 전체 결과와 bootstrap interval은 [Results](docs/RESULTS.md)에 있습니다.
+근거 개입 실험은 별도로 고정한 과거 실패 22건에서 진행했습니다. 자연 검색 조건 P1에서 다시 실패한 18건은 압축된 사실 카드를 준 P5까지 모두 복구됐습니다. 이 22건과 위 표의 새 성능 저하 28건은 서로 다른 평가 집합입니다. 전체 결과와 신뢰구간은 [Results](docs/RESULTS.md)에서 확인할 수 있습니다.
 
 ## 실행
 
@@ -75,17 +67,17 @@ python -m venv .venv
 .\.venv\Scripts\python.exe scripts\run_experiment.py --config configs\mini_temporal_mock.yaml
 ```
 
-Smoke run은 실행 경로만 확인합니다. CLARK 실험 재현에는 라이선스가 허용된 원천 데이터와 외부 모델·API가 필요합니다. 전체 순서는 [Reproducibility](docs/REPRODUCIBILITY.md)와 [Data pipeline](docs/CLARK_DATA_PIPELINE.md)에 있습니다.
+위 명령은 합성 데이터로 실행 경로를 확인합니다. CLARK 실험 전체를 재현하려면 라이선스가 허용된 원천 데이터와 외부 모델 또는 API가 필요합니다. 자세한 순서는 [Reproducibility](docs/REPRODUCIBILITY.md)에 있습니다.
 
-## 해석 범위
+## 한계
 
-- risk score는 개별 답변의 정답 확률이 아닙니다.
-- CLARK 밖의 데이터셋, 모델, prompt와 retriever에서도 같은 성능이 나온다고 주장하지 않습니다.
-- probe의 최초 복구 단계는 인과적으로 증명된 root cause가 아닙니다.
-- CLARK 원천 파일, 기사 본문, API 응답, 모델 가중치와 local index는 공개하지 않습니다.
+- 위험 점수는 개별 답변이 틀릴 확률이 아닙니다.
+- CLARK에서 얻은 결과가 다른 데이터, 모델과 검색기에서도 유지된다고 볼 수 없습니다.
+- 근거 개입에서 처음 복구된 단계는 인과적으로 증명한 원인이 아닙니다.
+- 원천 기사와 모델 가중치, API 응답, 로컬 인덱스는 저장소에 포함하지 않습니다.
 
-## 기여
+## 작업 범위
 
-연구 질문, 가설, temporal protocol, 평가 기준, detector, failure probe와 결과 해석 범위를 설계했습니다. Codex를 활용해 실험 코드와 테스트를 반복 수정·검증했고, 공개 저장소에는 실행 코드와 핵심 집계표를 함께 두었습니다.
+개인 연구 프로젝트로 연구 질문, 시간축 평가 프로토콜, 탐지기, 근거 개입 실험과 결과 해석을 설계했습니다. 구현과 테스트를 반복하는 과정에는 Codex를 사용했으며, 저장소에는 실행 코드와 검증된 집계 결과를 함께 공개했습니다.
 
-[Methods](docs/METHODS.md) · [Results](docs/RESULTS.md) · [Limitations](docs/LIMITATIONS.md) · [Reproducibility](docs/REPRODUCIBILITY.md)
+[Methods](docs/METHODS.md) · [Results](docs/RESULTS.md) · [Limitations](docs/LIMITATIONS.md) · [Data pipeline](docs/CLARK_DATA_PIPELINE.md)
