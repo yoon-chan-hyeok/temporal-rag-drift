@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="360" viewBox="0 0 1200 360" role="img" aria-labelledby="title desc">
   <title id="title">Temporal RAG Failure Detection</title>
-  <desc id="desc">Label-free failure detection and intervention probing after RAG updates.</desc>
+  <desc id="desc">Failure-risk detection without new monitoring-time gold labels and intervention probing after RAG updates.</desc>
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#070B14"/>
@@ -28,7 +28,7 @@
   <g transform="translate(70 240)">
     <rect width="320" height="72" rx="14" fill="#101827" stroke="url(#accent)" stroke-opacity=".55"/>
     <text x="18" y="29" fill="#94A3B8" font-size="12" font-weight="700" letter-spacing="1.5">MONITORING</text>
-    <text x="18" y="56" fill="#F8FAFC" font-size="22" font-weight="800">Label-Free Risk</text>
+    <text x="18" y="56" fill="#F8FAFC" font-size="22" font-weight="800">No New Gold Labels</text>
   </g>
 <g transform="translate(422 240)">
     <rect width="320" height="72" rx="14" fill="#101827" stroke="url(#accent)" stroke-opacity=".55"/>

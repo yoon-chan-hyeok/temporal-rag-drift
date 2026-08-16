@@ -72,7 +72,7 @@ Included:
 - synthetic smoke data;
 - derived result tables;
 - archived sanitized configs;
-- two result figures.
+- aggregate result tables and generated reports listed in `results/README.md`.
 
 Excluded:
 
