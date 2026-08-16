@@ -2,7 +2,7 @@
 
 <div align="center">
 
-**지식 DB가 바뀐 직후, 새 정답지 없이 성능 저하가 의심되는 질문을 찾고 실패 구간을 좁힙니다.**
+**지식 DB가 바뀐 직후, 새 gold label을 만들기 전에 성능 저하가 의심되는 질문을 찾고 실패 구간을 좁힙니다.**
 
 ![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
 ![Protocol](https://img.shields.io/badge/Evaluation-Frozen%20Temporal%20Transfer-7C3AED)
@@ -34,7 +34,7 @@ flowchart LR
 | 선택 | 이유 |
 |---|---|
 | BM25 + BGE + RRF | 날짜와 고유명사는 lexical search로 찾고, 표현이 다른 근거는 dense retrieval로 보완했습니다. 서로 다른 점수 대신 순위를 합쳤습니다. |
-| 답변 분포 비교 | 생성 한 번의 우연을 줄이기 위해 조건마다 16개 답변을 만들고 semantic shift와 uncertainty 변화를 계산했습니다. |
+| 답변 분포 비교 | 생성 한 번의 우연을 줄이기 위해 연구 조건에서는 질문·조건마다 16개 답변을 만들고 semantic shift와 uncertainty 변화를 계산했습니다. |
 | T0-frozen detector | 미래 label을 보고 기준을 다시 맞추지 않도록 detector와 threshold를 초기 구간에서 고정했습니다. |
 | P1-P5 probe | 최신 근거의 포함 여부, 순위, 주변 문맥을 한 단계씩 바꿔 다음 조사 대상을 정했습니다. |
 
@@ -71,4 +71,4 @@ Mini config는 실행 경로를 확인하는 synthetic smoke test입니다. 전�
 - [CLARK data pipeline](docs/CLARK_DATA_PIPELINE.md): 시간에 따른 DB 변경을 재현한 데이터 구성
 - [Limitations](docs/LIMITATIONS.md): 해석 범위
 
-결과는 CLARK에서 구성한 시간축과 공개한 retrieval, model, prompt 조건에 한정합니다. Risk score는 개별 답변의 정답 확률이 아니며, probe의 최초 복구 단계도 인과적으로 확인한 root cause는 아닙니다.
+결과는 CLARK에서 구성한 시간축과 공개한 retrieval, model, prompt 조건에 한정합니다. Risk score는 개별 답변의 정답 확률이 아니며, probe의 최초 복구 단계도 인과적으로 확인한 root cause는 아닙니다. 조건마다 16회 생성하는 설정은 연구용으로 비용이 크므로, 실제 배포에서는 허용 가능한 검토 비용과 탐지 성능을 기준으로 sample 수를 다시 정해야 합니다.
