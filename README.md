@@ -175,12 +175,12 @@ snapshots. See [Reproducibility](docs/REPRODUCIBILITY.md) and the
 - Detector validity is demonstrated only for the measured CLARK model/retriever/prompt regime.
 - Probe recovery stages do not establish a unique causal root cause.
 
-## Citation and project role
+## Source and project scope
 
 CLARK source: [Language Modeling with Editable External Knowledge](https://aclanthology.org/2025.findings-naacl.168/).
 
 The project owner defined the research question and temporal protocol, selected
 the operational endpoint, ran and audited the experiments, and revised the
-claims around observed failures. Codex was used substantially for
-implementation, debugging, analysis and documentation; the available history
-does not establish independent per-file authorship.
+claims around observed failures. The repository preserves the code, aggregate
+results and audit notes needed to inspect that process; licensed source data,
+case-level generations and model artifacts remain outside the public release.
