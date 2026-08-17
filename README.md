@@ -17,11 +17,16 @@
 
 RAG의 지식 DB가 업데이트되면 일부 질문은 최신 정보에 맞게 바뀌지만, 일부는 이전 답을 유지하거나 새 근거를 제대로 쓰지 못합니다. 운영 환경에서는 업데이트할 때마다 모든 질문의 최신 정답을 다시 만들기 어렵습니다.
 
-이 프로젝트는 업데이트 전후의 답변 분포만 보고 새롭게 저하될 가능성이 높은 질문의 검토 순위를 만듭니다. 탐지한 질문에는 근거 제공 방식을 단계적으로 바꾸는 probe를 적용해 retrieval, ranking, context, evidence utilization 중 어디부터 확인할지 좁힙니다.
+이 프로젝트는 두 단계를 다룹니다.
+
+1. 업데이트 전후의 답변 분포만 보고 새롭게 저하됐을 가능성이 높은 질문의 검토 순위를 만듭니다.
+2. 탐지한 질문에는 evidence 조건을 단계적으로 바꾸는 probe를 적용해 retrieval, ranking, context, evidence utilization 중 어디부터 확인할지 좁힙니다.
+
+출력은 오류 확정값이 아니라 제한된 검토 시간을 어디에 먼저 쓸지 정하는 risk ranking입니다.
 
 ## 설계
 
-~~~mermaid
+```mermaid
 flowchart LR
     A["Knowledge snapshots<br/>Kx and Ky"] --> B["BM25 + BGE<br/>hybrid retrieval"]
     B --> C["16 answer samples<br/>per condition"]
@@ -29,16 +34,26 @@ flowchart LR
     D --> E["T0-frozen<br/>detector"]
     E --> F["Risk-ranked<br/>questions"]
     F --> G["P1-P5<br/>evidence probe"]
-~~~
+```
 
 | 선택 | 이유 |
 |---|---|
 | BM25 + BGE + RRF | 날짜와 고유명사는 lexical search로 찾고, 표현이 다른 근거는 dense retrieval로 보완했습니다. 서로 다른 점수 대신 순위를 합쳤습니다. |
-| 답변 분포 비교 | 생성 한 번의 우연을 줄이기 위해 연구 조건에서는 질문·조건마다 16개 답변을 만들고 semantic shift와 uncertainty 변화를 계산했습니다. |
+| 답변 분포 비교 | 생성 한 번의 우연을 줄이기 위해 질문과 조건마다 16개 답변을 만들고 semantic shift와 uncertainty 변화를 계산했습니다. |
 | T0-frozen detector | 미래 label을 보고 기준을 다시 맞추지 않도록 detector와 threshold를 초기 구간에서 고정했습니다. |
-| P1-P5 probe | 최신 근거의 포함 여부, 순위, 주변 문맥을 한 단계씩 바꿔 다음 조사 대상을 정했습니다. |
+| P1-P5 probe | 최신 근거의 포함 여부, 순위와 문맥을 한 단계씩 바꿔 다음 조사 대상을 정했습니다. |
 
-처음에는 shift와 uncertainty가 모두 높으면 위험할 것으로 예상했습니다. 실제로는 uncertainty가 낮은 confident failure도 있었고, 최신 정보에 정상 적응해 shift가 커진 경우도 있었습니다. 단순 사분면 규칙을 버리고 두 축의 상호작용을 학습하는 quadratic logistic으로 바꿨습니다.
+### Detector를 바꾼 이유
+
+처음에는 shift와 uncertainty가 모두 높으면 위험할 것으로 예상했습니다. 실제 데이터에는 uncertainty가 낮은 confident failure와 최신 정보에 정상 적응해 shift가 커진 사례가 함께 있었습니다.
+
+단순 사분면 규칙 대신 두 축의 상호작용을 학습하는 quadratic logistic을 사용했습니다. Detector와 threshold는 T0에서 고정하고 미래 질문의 label을 본 뒤 다시 맞추지 않았습니다.
+
+### Intervention probing
+
+탐지 이후에는 최신 근거를 retrieval 결과에 포함하고, 순위를 높이고, 주변 문맥을 정리하고, direct fact card 형태로 제공하면서 답변이 언제 복구되는지 확인합니다.
+
+최초 복구 단계는 root cause의 인과적 증명이 아닙니다. Retriever를 먼저 볼지, context 구성이나 evidence utilization을 먼저 볼지 정하는 조사 신호입니다.
 
 ## 결과
 
@@ -48,27 +63,48 @@ CLARK-News에서 T0 이후 처음 등장한 질문만 모아 future question-dis
 |---:|---:|---:|---:|---:|---:|---:|---:|
 | 186 | 28 | **0.854** | 0.433 | 0.541 | **0.714** | **0.615** | **3.59x** |
 
-Risk lift 3.59x는 detector가 고른 검토 집합에 새 저하 사례가 전체 평균보다 3.59배 많이 모였다는 뜻입니다. 오류를 자동 확정하는 점수가 아니라, 제한된 검토 시간을 어디에 먼저 쓸지 정하는 결과입니다.
+Risk lift 3.59x는 detector가 고른 검토 집합에 새 저하 사례가 전체 평균보다 3.59배 많이 모였다는 뜻입니다.
 
-별도의 과거 failure cohort에서는 natural retrieval로 다시 실패한 18건이 direct fact card 조건까지 모두 복구됐습니다. 이 probe 결과는 원인을 증명하지 않지만, retriever보다 evidence 전달과 활용을 먼저 점검해야 하는 사례를 가려냈습니다.
+별도의 과거 failure cohort에서는 natural retrieval로 다시 실패한 18건이 direct fact card 조건까지 모두 복구됐습니다. 이 결과는 해당 사례에서 retriever 자체보다 evidence 전달과 활용을 먼저 점검할 근거가 됩니다.
+
+집계 결과는 [results](results/)에, 평가 조건과 bootstrap interval은 [Results](docs/RESULTS.md)에 정리했습니다.
+
+## 기술과 저장소 구성
+
+| 영역 | 기술 |
+|---|---|
+| Retrieval | BM25, BGE, Reciprocal Rank Fusion |
+| Representation | Sentence Transformers, semantic clustering, NLI |
+| Modeling | scikit-learn, NumPy, SciPy |
+| Evaluation | Temporal split, frozen transfer, bootstrap, permutation test |
+
+```text
+configs/              실제 실험과 공개 smoke config
+data/                 데이터 형식과 mini retrieved sample
+docs/                 방법, 결과, 재현 절차, 한계
+results/              detector와 probe 집계 결과
+scripts/              CLARK 준비, 평가, 통계, 보고서 entry point
+src/                  retrieval, generation, metrics, pipeline module
+tests/                detector, outcome, retrieval, prompt-time test
+```
 
 ## 실행
 
-~~~powershell
+```powershell
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 .\.venv\Scripts\python.exe -m unittest discover -s tests -p "test_*.py"
 .\.venv\Scripts\python.exe scripts\run_experiment.py --config configs\mini_temporal_mock.yaml
-~~~
+```
 
-Mini config는 실행 경로를 확인하는 synthetic smoke test입니다. 전체 CLARK 실험에는 원천 데이터와 외부 모델 또는 API가 필요합니다.
+Mini config는 synthetic data와 mock 경로로 pipeline 연결을 확인합니다. 전체 CLARK 실험에는 원천 데이터와 외부 model 또는 API가 필요합니다.
 
 ## 상세 문서
 
-- [Methods](docs/METHODS.md): metric, detector, temporal protocol
+- [Methods](docs/METHODS.md): metric, detector, probe 정의
 - [Results](docs/RESULTS.md): 전체 결과와 bootstrap interval
 - [Reproducibility](docs/REPRODUCIBILITY.md): 실행 순서와 필요한 artifact
 - [CLARK data pipeline](docs/CLARK_DATA_PIPELINE.md): 시간에 따른 DB 변경을 재현한 데이터 구성
 - [Limitations](docs/LIMITATIONS.md): 해석 범위
 
-결과는 CLARK에서 구성한 시간축과 공개한 retrieval, model, prompt 조건에 한정합니다. Risk score는 개별 답변의 정답 확률이 아니며, probe의 최초 복구 단계도 인과적으로 확인한 root cause는 아닙니다. 조건마다 16회 생성하는 설정은 연구용으로 비용이 크므로, 실제 배포에서는 허용 가능한 검토 비용과 탐지 성능을 기준으로 sample 수를 다시 정해야 합니다.
+결과는 CLARK에서 구성한 시간축과 공개한 retrieval, model, prompt 조건에 한정합니다. Risk score는 개별 답변의 정답 확률이 아니며, probe의 최초 복구 단계도 인과적으로 확인한 root cause는 아닙니다. 공개 저장소에는 집계 결과를 포함하지만 case-level prediction과 licensed CLARK 원천 데이터는 포함하지 않습니다.
