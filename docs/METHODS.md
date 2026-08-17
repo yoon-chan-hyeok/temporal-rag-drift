@@ -2,119 +2,145 @@
 
 ## 1. Temporal unit
 
-Each record contains one natural-language CLARK question, an old answer, a
-current answer, two timestamps, and top-k evidence retrieved from cumulative
-news snapshots.
+Each event contains one CLARK natural-language question, the answer valid at an
+old time `x`, the answer valid at a later time `y`, and evidence retrieved from
+two cumulative news snapshots:
 
 ```text
-Kx = articles published at or before time x
-Ky = articles published at or before time y, where x < y
+Kx = articles timestamped at or before x
+Ky = articles timestamped at or before y, where x < y
 ```
 
-The primary comparison is `stale_only` versus `current_only`. The updated corpus
-therefore contains historical articles as well as newly accumulated evidence.
+The comparison is `stale_only(Kx)` versus `current_only(Ky)`. `Ky` retains
+historical articles and adds newly available evidence; no synthetic mixed
+condition is used.
 
 ## 2. Retrieval
 
-Articles are stored in a local SQLite FTS5 index. Retrieval combines:
+Articles are materialized in a local SQLite FTS5 index. The same retriever is
+used at both timestamps:
 
-1. BM25 lexical candidates;
-2. BGE dense candidates from `BAAI/bge-large-en-v1.5`;
-3. reciprocal-rank fusion;
-4. temporal filtering at `time_x` or `time_y`;
-5. article deduplication and top-k selection.
+1. apply the snapshot time filter;
+2. retrieve lexical candidates with BM25;
+3. retrieve dense candidates with `BAAI/bge-large-en-v1.5`;
+4. fuse rankings with reciprocal-rank fusion;
+5. deduplicate by article and select top-k 10.
 
-The main configuration uses top-k 10. Retrieved evidence and ranking metadata
-are materialized before generation so that a run is reproducible.
+Top-k contexts and ranking metadata are stored before answer generation. The
+audit checks timestamp leakage, duplicate articles, cardinality, current/old
+answer support and support rank.
 
-## 3. Generation
+## 3. Answer generation
 
-The same prompt, generator and retrieval settings are fixed across snapshots.
-Each question-condition pair is sampled 16 times with temperature 0.8 and
-top-p 0.95. The prompt instructs the model to use only retrieved evidence,
-respect the evaluation date, and prefer the newest relevant passage when
-evidence conflicts.
+The fixed generation setup is:
 
-## 4. Answer distributions
+| Setting | Value |
+|---|---|
+| Model | `gpt-5.6-luna` through an OpenAI-compatible API |
+| Samples | 16 per question and snapshot |
+| Temperature | 0.8 |
+| Top-p | 0.95 |
+| Max new tokens | 96 |
+| Context rule | use only retrieved evidence and the stated evaluation date |
+| Conflict rule | prefer the newest directly relevant passage available by that date |
 
-Answers are embedded with `BAAI/bge-large-en-v1.5`. Semantic equivalence is
-estimated with bidirectional entailment from `microsoft/deberta-large-mnli`.
-The resulting clusters support semantic entropy and cluster-JS computation.
+The detector experiment reuses completed answer samples; fitting the ML
+detector does not make additional API calls.
 
-Shift metrics:
+## 4. Semantic answer distributions
 
-- Sliced Wasserstein distance
-- RBF-MMD
-- Energy distance
-- semantic-cluster JS divergence
-- centroid gap
+Answers are embedded with `BAAI/bge-large-en-v1.5`. Semantic equivalence
+clusters use bidirectional entailment from `microsoft/deberta-large-mnli`, with
+numeric mismatches forced into separate clusters.
 
-Uncertainty metrics:
+The Core4 detector uses only temporal changes:
 
-- semantic entropy
-- semantic volume
-- their temporal changes from `Kx` to `Ky`
+- **Energy distance:** geometric separation between old and current answer embeddings.
+- **Cluster JS:** Jensen-Shannon divergence between old/current semantic-cluster probabilities.
+- **Delta entropy:** current semantic entropy minus old semantic entropy.
+- **Delta volume:** current semantic volume minus old semantic volume.
 
-## 5. Two detector axes
+Energy and JS represent distribution shift. Delta entropy and delta volume
+represent change in uncertainty. Absolute old/current entropy and volume are
+excluded from Core4.
 
-Raw metrics are mapped to empirical percentiles using the T0 calibration
-cohort. The actual frozen experiment uses:
+## 5. T0-fitted normalization
+
+Each raw feature is transformed using T0 only; later updates never redefine the
+reference distribution.
+
+- ECDF: T0 empirical percentile.
+- Rank Gaussian: inverse-normal transform of the T0 ECDF.
+- Robust-z: `(value - T0 median) / (T0 IQR / 1.349)`, clipped to `[-8, 8]`.
+
+Nine model families and the three representations form 27 candidates. Repeated
+nested stratified folds create T0 out-of-fold predictions. Inner folds select
+hyperparameters by average precision; the alarm threshold maximizes T0
+out-of-fold F1. Class-balanced loss or weights handle the positive minority.
+
+The compared families are L2 logistic, elastic net, quadratic logistic,
+additive GAM, RBF-SVM, Extra Trees, histogram gradient boosting, XGBoost and
+MLP. XGBoost and MLP use prespecified baseline configurations rather than the
+same grid size as the other families.
+
+## 6. Offline outcome label
+
+Accuracy is the fraction of 16 samples matching the answer valid at each
+timestamp. Labels are retrospective evaluation targets:
 
 ```text
-shift_score = mean percentile(SWD, MMD, Energy, Cluster-JS, centroid gap)
-uncertainty_score = mean percentile(delta entropy, delta volume)
+persistent failure = accuracy_x < 0.50 and accuracy_y < 0.50
+new degradation    = not persistent and accuracy_x - accuracy_y >= 0.10
+target              = 1 for new degradation; 0 for every other outcome
 ```
 
-The final risk surface is a quadratic logistic regression over these two axes.
-
-The metrics cover different changes in the answer distribution. Transport
-distances capture geometric movement, cluster-JS captures changes in semantic
-mixture, and centroid gap captures a global location change. Entropy and volume
-are kept on a separate axis because they describe answer instability rather
-than movement alone.
-
-Metric scales are not directly comparable, so every value is converted to its
-T0 empirical percentile before aggregation. This makes each component express
-how unusual the update is relative to the same calibration period. Quadratic
-logistic regression then allows curvature and a shift-uncertainty interaction
-while retaining a two-axis surface that can be inspected. Model selection and
-threshold fitting use T0 data only.
-
-## 6. Offline outcome labels
-
-Accuracy is the fraction of 16 answers matching the answer valid at each
-timestamp. The primary event is a newly introduced degradation:
-
-```text
-accuracy_x - accuracy_y >= 0.10
-```
-
-Persistent failures are separated from the primary comparison. Gold answers
-are used for calibration and retrospective evaluation, not as detector inputs
-on future updates.
+Gold answers create T0 labels and evaluate later predictions. They are not
+detector features. Core4 uses changed questions only; stable questions are not
+used for its normalization, fitting or future score.
 
 ## 7. Frozen temporal transfer
 
-- T0 calibration: 2021-12-22 to 2022-08-31
-- detector: quadratic logistic
-- frozen threshold: 0.784043
-- future evaluation: four later cumulative-news updates
-- future detector fitting or threshold tuning: none
-- uncertainty intervals: question-clustered bootstrap, 2,000 rounds
+| Split | Update | Events | Positive |
+|---|---|---:|---:|
+| T0 | 2021-12-22 -> 2022-08-31 | 167 | 24 |
+| T1 | 2022-08-31 -> 2023-01-29 | 123 | 22 |
+| T2 | 2023-01-29 -> 2023-07-31 | 92 | 16 |
+| T3 | 2023-07-31 -> 2023-11-21 | 70 | 11 |
+| T4 | 2023-11-21 -> 2024-04-19 | 56 | 11 |
 
-The question-disjoint confirmatory subset excludes questions observed at T0.
+T1-T4 contain 341 update events and 329 unique questions. T0 questions are
+excluded from future questions. No future label is used to refit a
+normalization, model, hyperparameter or threshold. Confidence intervals use
+question-clustered bootstrap so repeated future observations of one natural
+question stay together.
 
-## 8. Failure probe
+The earlier two-axis confirmatory baseline uses a different primary subset:
+new degradation versus recovery/adaptive success, excluding persistent
+failures. Its 186-case result is retained as prior evidence, not compared to
+Core4 as a direct performance improvement.
 
-The diagnostic ladder changes only evidence delivery:
+## 8. Detector-linked probe
 
-| Stage | Intervention | Candidate interpretation if recovery starts here |
-|---|---|---|
-| P1 | Natural top-k | Baseline behavior |
-| P2 | Current support guaranteed | Retrieval coverage |
-| P3 | Current support at rank 1 | Ranking or position sensitivity |
-| P4 | Decisive evidence only | Extraction or context complexity |
-| P5 | Compact fact card | Evidence utilization or answer realization |
+The exploratory diagnostic extension uses the frozen Core4 Additive GAM.
+Screening metrics are computed on all 341 future events. The probe cohort then
+contains all 60 positives, all 42 false positives and 42 risk/stratum-matched
+true-negative controls.
 
-Recovery stage is an intervention-based hypothesis, not a certified causal
-root cause.
+All five conditions use the same evaluation timestamp and hide condition names
+from the model:
+
+| Stage | Intervention |
+|---|---|
+| P1 | Natural current top-k |
+| P2 | Guarantee current support is present |
+| P3 | Move current support to rank 1 |
+| P4 | Supply decisive evidence only |
+| P5 | Supply a compact fact card containing the current gold fact |
+
+A historical drop is reproduced when pre-update accuracy minus P1 accuracy is
+at least 0.10. Recovery requires at least 0.10 gain from P1 and a residual gap
+from pre-update accuracy of at most `1/16`.
+
+The earliest recovery stage is a failure-location candidate, not a causal
+proof. P5 is an oracle upper bound because it explicitly includes the gold
+current fact.

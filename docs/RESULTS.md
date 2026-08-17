@@ -1,59 +1,116 @@
 # Results
 
-## Frozen future transfer
+## 1. Core4 frozen transfer
 
-The detector was calibrated once at T0 and applied to later cumulative-news
-updates without retraining.
+Each row uses the representation selected for that model from T0 only. Future
+contains all 341 T1-T4 changed-question events, including persistent failures
+in the negative class.
 
-| Cohort | N | Positive | AUROC | AUPRC | Precision | Recall | F1 | Risk lift |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| Future question-disjoint confirmatory | 186 | 28 | **0.854** | 0.433 | 0.541 | **0.714** | **0.615** | **3.59x** |
-| All future primary cases | 320 | 60 | 0.870 | 0.539 | 0.592 | 0.750 | 0.662 | 3.16x |
+| Model | Representation | T0 F1 | Future AUROC | AUPRC | Precision | Recall | F1 | Risk lift |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+| L2 logistic | robust-z | 0.691 | **0.883** | 0.617 | 0.526 | 0.833 | 0.645 | 2.991x |
+| Elastic net | robust-z | 0.679 | 0.886 | 0.642 | 0.510 | 0.833 | 0.633 | 2.900x |
+| Quadratic logistic | robust-z | 0.692 | 0.860 | 0.558 | 0.538 | 0.817 | **0.649** | 3.060x |
+| Additive GAM | robust-z | 0.679 | 0.853 | 0.531 | 0.533 | 0.800 | 0.640 | 3.031x |
+| RBF-SVM | ECDF | 0.654 | 0.865 | **0.664** | 0.506 | 0.733 | 0.599 | 2.874x |
+| Extra Trees | robust-z | **0.706** | 0.867 | 0.534 | 0.528 | 0.783 | 0.631 | 3.001x |
+| HistGradientBoosting | rank Gaussian | 0.667 | 0.861 | 0.506 | 0.467 | 0.817 | 0.594 | 2.652x |
+| XGBoost | ECDF | 0.694 | 0.868 | 0.519 | 0.533 | 0.667 | 0.593 | 3.031x |
+| MLP | robust-z | 0.640 | 0.860 | 0.563 | 0.445 | 0.883 | 0.592 | 2.531x |
 
-Confirmatory 95% question-clustered bootstrap intervals:
+Extra Trees is the formal T0 F1 winner. Quadratic logistic is the descriptive
+future F1 winner. The latter cannot replace the former as a prespecified
+selection because future labels were observed before making that comparison.
 
-- AUROC: 0.769 to 0.925
-- AUPRC: 0.303 to 0.614
-- F1: 0.456 to 0.741
-- risk lift: 2.759x to 4.843x
+Paired question-cluster bootstrap differences among leading models:
 
-## Confirmatory transfer by interval
+| Comparison | F1 difference | 95% interval |
+|---|---:|---:|
+| GAM - quadratic logistic | -0.0093 | [-0.0341, 0.0090] |
+| GAM - L2 logistic | -0.0057 | [-0.0409, 0.0256] |
+| GAM - Extra Trees | 0.0091 | [-0.0133, 0.0349] |
 
-| Update end | N | Positive | AUROC | AUPRC | F1 | Risk lift |
-|---|---:|---:|---:|---:|---:|---:|
-| 2023-01-29 | 74 | 12 | 0.894 | 0.457 | 0.733 | 3.77x |
-| 2023-07-31 | 43 | 5 | 0.792 | 0.485 | 0.500 | 3.69x |
-| 2023-11-21 | 38 | 5 | 0.658 | 0.255 | 0.333 | 2.17x |
-| 2024-04-19 | 31 | 6 | 0.980 | 0.915 | 0.727 | 4.13x |
+All intervals include zero. The evidence supports a transferable Core4 signal,
+not superiority of GAM or another single family.
 
-The 2023-11 interval is substantially weaker. This prevents a claim that the
-detector has constant performance over time.
+## 2. Additive GAM by update
 
-## P1-P5 probe
+The diagnostic extension uses Additive GAM because its four-dimensional
+response can be inspected through direct slices.
 
-| Cohort | N | P1 accuracy | P5 accuracy | P1 failures recovered by P5 |
-|---|---:|---:|---:|---:|
-| New degradation | 22 | 0.219 | 1.000 | 18/18 |
-| Persistent failure | 18 | 0.160 | 0.944 | 15/15 |
-| Adaptive control | 22 | 0.977 | 1.000 | No P1 failure |
-| Normal control | 22 | 0.972 | 1.000 | No P1 failure |
+| Update | N | Positive | AUROC | F1 | Risk lift |
+|---|---:|---:|---:|---:|---:|
+| T1 | 123 | 22 | 0.847 | 0.655 | 2.95x |
+| T2 | 92 | 16 | 0.861 | 0.683 | 3.22x |
+| T3 | 70 | 11 | 0.851 | 0.615 | 3.39x |
+| T4 | 56 | 11 | 0.821 | 0.560 | 2.55x |
+| T1-T4 | 341 | 60 | **0.853** | **0.640** | **3.03x** |
 
-Earliest recovery candidates across failure cohorts:
+Question-clustered bootstrap 95% intervals for T1-T4:
 
-| Candidate mechanism | Questions |
+- AUROC: [0.799, 0.900]
+- AUPRC: [0.408, 0.651]
+- recall: [0.694, 0.897]
+- F1: [0.536, 0.723]
+- risk lift: [2.572x, 3.664x]
+
+Performance weakens at T4; temporal invariance is not established.
+
+## 3. Detector-linked probe
+
+Screening on all 341 future events:
+
+| TP | FP | FN | TN | AUROC | AUPRC | Precision | Recall | F1 | Risk lift |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 48 | 42 | 12 | 239 | 0.853 | 0.531 | 0.533 | 0.800 | 0.640 | 3.031x |
+
+Probe cohort composition:
+
+| Group | N | P1 drop reproduced | P2-P5 recovery candidate | Mean P1 accuracy | Mean P5 accuracy |
+|---|---:|---:|---:|---:|---:|
+| True positive | 48 | 43 | 43 | 0.254 | 0.999 |
+| False negative | 12 | 12 | 12 | 0.073 | 1.000 |
+| False positive | 42 | 1 | 1 | 0.676 | 0.981 |
+| Matched true-negative control | 42 | 3 | 3 | 0.885 | 0.961 |
+
+Across the 60 historical positives, 55 reproduced the drop at P1. Their
+earliest recovery candidates were:
+
+| Candidate | Events |
 |---|---:|
-| Retrieval coverage | 2 |
-| Ranking or position sensitivity | 1 |
+| Retrieval coverage | 4 |
+| Ranking or position | 1 |
 | Evidence extraction or context complexity | 12 |
-| Evidence utilization or answer realization | 18 |
+| Evidence utilization or answer realization at P5 | 37 |
+| Stochastic P2 recovery without context change | 1 |
+| No degradation on probe rerun | 5 |
 
-Four new-degradation and three persistent-failure questions did not fail on the
-probe rerun. They are counted as no-failure-on-rerun rather than assigned a
-mechanism.
+Latest support was already present in natural top-k for 52/60 positives. This
+makes pure coverage failure insufficient as the dominant explanation in this
+run.
+
+The detector alarm and a probe recovery stage were both observed for 43/60
+historical positives. This 71.7% includes P5 and therefore represents an
+oracle-aided diagnostic upper bound. Restricting recovery to P2-P4 gives
+11/60 (18.3%), and those stages still use benchmark-selected current support.
+
+## 4. Earlier confirmatory baseline
+
+The repository retains a prior two-axis quadratic detector on a narrower,
+question-disjoint primary subset:
+
+| N | Positive | AUROC | AUPRC | Precision | Recall | F1 | Risk lift |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 186 | 28 | 0.854 | 0.433 | 0.541 | 0.714 | 0.615 | 3.59x |
+
+This result and Core4 use different negative populations. They are supporting
+experiments, not a before/after improvement comparison.
 
 ## Defensible conclusion
 
-Within this CLARK setup, a detector frozen on an early update usefully ranks
-new-degradation risk on later updates. The evidence supports review
-prioritization after cumulative news updates. It does not support universal
-failure detection or absolute correctness certification.
+Within the measured CLARK regime, answer-distribution change contains useful
+signal for prioritizing questions that newly degrade after cumulative news
+updates. A T0-frozen Core4 detector retained AUROC around 0.85 and tripled the
+positive rate among alarms. The probe can narrow diagnostic candidates under
+controlled evidence interventions, but operational label-free root-cause
+localization and absolute correctness detection remain unproven.

@@ -1,3 +1,5 @@
 experiment,cohort,n,positives,auroc,auprc,precision,recall,f1,risk_lift,status
 clark_t0_frozen_transfer,future_question_disjoint_confirmatory,186,28,0.854,0.433,0.541,0.714,0.615,3.59,confirmatory
-clark_t0_frozen_transfer,all_future_primary,320,60,0.870,0.539,0.592,0.750,0.662,3.16,primary
+clark_core4_additive_gam,all_future_changed_events,341,60,0.853,0.531,0.533,0.800,0.640,3.03,exploratory_frozen_transfer
+clark_core4_l2_logistic,all_future_changed_events,341,60,0.883,0.617,0.526,0.833,0.645,2.99,exploratory_frozen_transfer
+clark_core4_quadratic_logistic,all_future_changed_events,341,60,0.860,0.558,0.538,0.817,0.649,3.06,exploratory_frozen_transfer

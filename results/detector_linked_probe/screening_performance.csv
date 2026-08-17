@@ -1,0 +1,2 @@
+﻿detector,future_n,future_positive,prevalence,tp,fp,fn,tn,auroc,auprc,precision,recall,f1,alarm_rate,risk_lift
+additive_gam,341,60,0.17595307917888564,48,42,12,239,0.8529952550415183,0.5305857205171726,0.5333333333333333,0.8,0.64,0.26392961876832843,3.031111111111111
