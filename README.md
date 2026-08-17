@@ -1,156 +1,136 @@
 <div align="center">
 
-# CLARK Temporal RAG Failure Detection
+[한국어](README.md) | [English](README_EN.md)
 
-**Freeze a detector on the first database update, transfer it to later news snapshots, then probe flagged failures.**
+# DB 업데이트 뒤 위험해진 RAG 질문 찾기
+
+**Temporal RAG Failure Detection**
+
+지식 DB가 바뀐 직후 최신 정답지가 없어도, 답변 분포의 변화를 이용해 성능 저하 위험이 큰 질문을 먼저 찾고 점검할 구간을 좁힙니다.
 
 ![Python 3.11](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
 ![Dataset CLARK](https://img.shields.io/badge/Dataset-CLARK--News-0F766E)
 ![Protocol Frozen Transfer](https://img.shields.io/badge/Protocol-Frozen%20Temporal%20Transfer-7C3AED)
 ![Tests](https://github.com/yoon-chan-hyeok/temporal-rag-drift/actions/workflows/tests.yml/badge.svg)
-![Status Research Artifact](https://img.shields.io/badge/Status-Research%20Artifact-D97706)
+
+[문제](#왜-이-문제를-다뤘나) · [방법](#탐지기를-만든-방법) · [결과](#미래-업데이트-평가) · [실행](#빠르게-확인하기)
 
 </div>
 
-## What this project asks
+## 왜 이 문제를 다뤘나
 
-When a cumulative news database changes from `Kx` to `Ky`, can a fixed RAG
-agent's answer distributions identify questions that **newly lose accuracy**,
-before new gold labels are available in operation?
+뉴스, 정책, 규정처럼 시간이 지나며 바뀌는 지식을 다루는 RAG는 DB가 업데이트된 뒤에 성능이 달라질 수 있습니다. 하지만 실제 운영에서는 DB가 바뀔 때마다 모든 질문의 최신 정답을 다시 만들기 어렵습니다. 정답지가 없는 시점에 어떤 질문부터 확인할지 정하는 방법이 필요합니다.
 
-This repository studies that question with CLARK temporal QA and timestamped
-news evidence. The detector receives no future correctness label. It only sees
-four changes measured from 16 answers before and after the update:
+이 프로젝트는 같은 질문을 업데이트 전후의 RAG에 반복해 물었을 때 나타나는 답변 분포의 변화를 사용합니다. 미래 시점의 정답 라벨은 탐지기에 넣지 않습니다. 탐지 결과는 답변의 정오를 보증하는 값이 아니라, 업데이트 뒤 상대적으로 위험해진 질문의 검수 순서입니다.
 
-```text
-Shift       = Energy distance + semantic-cluster JS divergence
-Uncertainty = delta semantic entropy + delta semantic volume
-```
+## 30초 요약
 
-The operating unit is a replayed question or probe set observed at both
-snapshots. This is a relative degradation-risk monitor, not a correctness
-certificate for one previously unseen answer.
+- CLARK의 시간 정보가 있는 질문과 뉴스 근거를 누적 DB 스냅샷으로 재구성했습니다.
+- 첫 업데이트에서만 모델, 정규화와 경보 기준을 정하고 이후 네 번의 업데이트에는 다시 맞추지 않았습니다.
+- 답변의 이동량과 불확실성 변화 4개를 입력으로 사용한 Core4 탐지기를 비교했습니다.
+- 위험 사례를 찾은 뒤에는 근거를 단계적으로 바꾸는 개입 실험으로 검색, 순위, 문맥 복잡도, 근거 활용 문제를 나눠 살폈습니다.
 
-## End-to-end design
+## 탐지기를 만든 방법
 
 ```mermaid
 flowchart LR
-    A["CLARK questions<br/>time-valid answers"] --> B["Timestamped news<br/>cumulative Kx / Ky"]
-    B --> C["BM25 + BGE + RRF<br/>top-k 10"]
-    C --> D["Fixed RAG agent<br/>16 samples per snapshot"]
-    D --> E["Core4<br/>Energy · JS · ΔEntropy · ΔVolume"]
-    E --> F["T0 model selection<br/>normalization + threshold"]
-    F --> G["Frozen T1-T4 transfer<br/>risk-ranked questions"]
-    G --> H["P1-P5 evidence probe<br/>failure-location candidate"]
+    A["시간 정보가 있는<br/>CLARK 질문"] --> B["누적 뉴스 DB<br/>Kx / Ky"]
+    B --> C["BM25 + BGE + RRF<br/>상위 10개 근거"]
+    C --> D["고정된 RAG<br/>스냅샷별 16회 답변"]
+    D --> E["Core4<br/>이동량 2개 + 불확실성 2개"]
+    E --> F["T0에서 모델과<br/>경보 기준 선택"]
+    F --> G["T1~T4에<br/>재학습 없이 적용"]
+    G --> H["P1~P5 근거 개입<br/>점검 구간 추정"]
 ```
 
-| Layer | Fixed implementation |
-|---|---|
-| Dataset | CLARK natural-language temporal QA and answer-validity spans |
-| Snapshot | `K_t =` articles timestamped at or before `t` |
-| Retrieval | SQLite FTS5 BM25 + `BAAI/bge-large-en-v1.5` + reciprocal-rank fusion |
-| Generation | `gpt-5.6-luna`, temperature 0.8, top-p 0.95, 16 samples per condition |
-| Semantic analysis | BGE answer embeddings + `microsoft/deberta-large-mnli` clustering |
-| Endpoint | `accuracy_x - accuracy_y >= 0.10`, excluding persistent failure from the positive class |
+### 답변 변화를 수치로 바꾸기
 
-## Frozen temporal transfer
-
-Model family, representation, hyperparameters and alarm threshold are selected
-using only the first update, `T0: 2021-12-22 -> 2022-08-31`. They are then
-applied without refitting to four later cumulative-news updates.
-
-| Split | Update | Events | New degradation |
-|---|---|---:|---:|
-| T0 calibration | 2021-12-22 -> 2022-08-31 | 167 | 24 |
-| T1 test | 2022-08-31 -> 2023-01-29 | 123 | 22 |
-| T2 test | 2023-01-29 -> 2023-07-31 | 92 | 16 |
-| T3 test | 2023-07-31 -> 2023-11-21 | 70 | 11 |
-| T4 test | 2023-11-21 -> 2024-04-19 | 56 | 11 |
-
-### Core4 model comparison
-
-Nine classifier families and three T0-fitted normalizations were evaluated.
-The table reports each model's T0-selected representation and its frozen
-T1-T4 result (`N=341`, 60 positive events).
-
-| Model | Normalization | Future AUROC | AUPRC | Recall | F1 | Risk lift |
-|---|---|---:|---:|---:|---:|---:|
-| L2 logistic | robust-z | **0.883** | 0.617 | 0.833 | 0.645 | 2.99x |
-| Quadratic logistic | robust-z | 0.860 | 0.558 | 0.817 | **0.649** | 3.06x |
-| Additive GAM | robust-z | 0.853 | 0.531 | 0.800 | 0.640 | **3.03x** |
-| Extra Trees | robust-z | 0.867 | 0.534 | 0.783 | 0.631 | 3.00x |
-| RBF-SVM | ECDF | 0.865 | **0.664** | 0.733 | 0.599 | 2.87x |
-
-Extra Trees had the highest T0 F1 and is the formal T0-selection winner.
-Quadratic logistic had the highest future F1 descriptively. Pairwise clustered
-bootstrap intervals among the leading models include zero, so the results do
-not establish one universally superior classifier. Additive GAM is retained
-for the diagnostic extension because its Core4 surface is inspectable and its
-frozen performance is comparable; this choice is explicitly post-hoc.
-
-![Additive GAM frozen Core4 transfer](assets/clark_core4_gam_robust_z_transfer.png)
-
-The background is a direct 2D slice of a four-dimensional frozen detector. Red
-points are new degradations, teal points are other outcomes, and black rings
-show actual 4D alarms. Additional surfaces are provided for
-[L2 logistic](assets/clark_core4_l2_robust_z_transfer.png) and
-[quadratic logistic](assets/clark_core4_quadratic_robust_z_transfer.png).
-
-## Detector-linked failure probe
-
-The frozen Additive GAM screened all 341 future events:
-
-| AUROC | AUPRC | Precision | Recall | F1 | Risk lift | TP / FP / FN / TN |
-|---:|---:|---:|---:|---:|---:|---:|
-| **0.853** | 0.531 | 0.533 | **0.800** | **0.640** | **3.03x** | 48 / 42 / 12 / 239 |
-
-All 60 positive events, all 42 false positives, and 42 matched true-negative
-controls were replayed through a blinded evidence ladder (`144` events,
-`11,520` generated answers):
-
-| Stage | Evidence intervention | Earliest recovery suggests |
-|---|---|---|
-| P1 | Natural top-k | Baseline |
-| P2 | Current support guaranteed | Retrieval coverage sensitivity |
-| P3 | Current support moved to rank 1 | Ranking/position sensitivity |
-| P4 | Decisive evidence only | Extraction or context-complexity sensitivity |
-| P5 | Compact current fact card | Evidence-utilization/answer-realization sensitivity |
-
-![Probe accuracy by detector group](assets/clark_detector_linked_probe_accuracy.png)
-
-The detector caught `48/60` historical new degradations. Five of those did not
-reproduce at P1; the remaining `43/60` both triggered an alarm and reached a
-recovery stage. P5 explicitly contains the current gold fact, so this 71.7%
-end-to-end figure is an **oracle diagnostic upper bound**, not an operational
-label-free localization rate. Before P5, only `11/60` positives recovered at
-P2-P4 under benchmark-selected evidence interventions.
-
-![Candidate mechanism by detector outcome](assets/clark_detector_linked_probe_mechanisms.png)
-
-Most reproduced degradations first recovered at P4 or P5, even though latest
-support was already present in natural top-k for `52/60` positives. This points
-to evidence extraction/utilization as a major candidate in this setup, but the
-probe stage is an intervention-based hypothesis rather than causal proof.
-
-## Repository map
+스냅샷마다 같은 질문에 16개의 답변을 생성했습니다. 한 번의 답변이 아니라 답변 집합이 어떻게 움직였는지를 네 가지 값으로 계산했습니다.
 
 ```text
-assets/                     detector surfaces and probe figures
-configs/actual/             sanitized archived experiment settings
-data/                       synthetic smoke fixture and CLARK setup notes
-docs/                       methods, data pipeline, results and limitations
-results/clark_t0/           original two-axis confirmatory baseline
-results/core4_ml/           Core4 T0 selection and frozen transfer summaries
-results/detector_linked_probe/ aggregate screening and probe summaries
-scripts/                    CLARK retrieval, generation, detector and probe code
-src/                        shared RAG, embedding, clustering and metric modules
-tests/                      focused unit and synthetic pipeline tests
+이동량(Shift)       = Energy distance + 의미 군집 JS divergence
+불확실성 변화       = 의미 엔트로피 변화 + 의미 부피 변화
 ```
 
-Original CLARK questions, article text, case-level predictions, response logs,
-model weights, API credentials and SQLite indexes are intentionally excluded.
+처음에는 이동량과 불확실성을 높고 낮음으로 나눈 단순 규칙을 생각했습니다. 실제 데이터에서는 크게 이동했지만 한쪽 답으로 모여 불확실성이 낮은 사례도 중요했습니다. 그래서 네 값을 그대로 사용하고, 첫 업데이트에서 여러 분류기를 비교하는 방식으로 바꿨습니다.
 
-## Quick verification
+### 고정한 실험 조건
+
+| 항목 | 설정 |
+|---|---|
+| 데이터 | CLARK 자연어 시간 질의와 정답 유효 기간 |
+| DB 스냅샷 | 해당 시점까지 발행된 뉴스 기사 누적 |
+| 검색 | SQLite FTS5 BM25 + `BAAI/bge-large-en-v1.5` + RRF |
+| 답변 생성 | `gpt-5.6-luna`, temperature 0.8, top-p 0.95, 조건별 16회 |
+| 의미 분석 | BGE 답변 임베딩 + `microsoft/deberta-large-mnli` 군집화 |
+| 성능 저하 정의 | 업데이트 뒤 정확도가 0.10 이상 하락한 사례. 두 시점 모두 실패한 사례는 양성에서 제외 |
+
+## 미래 업데이트 평가
+
+모델 종류, 표현 방식, 하이퍼파라미터와 경보 기준은 첫 업데이트 `T0`만 보고 정했습니다. 이후 네 업데이트에는 다시 학습하거나 경보 기준을 조정하지 않았습니다.
+
+| 구간 | DB 업데이트 | 사례 수 | 새 성능 저하 |
+|---|---|---:|---:|
+| T0 선택 구간 | 2021-12-22 → 2022-08-31 | 167 | 24 |
+| T1 평가 | 2022-08-31 → 2023-01-29 | 123 | 22 |
+| T2 평가 | 2023-01-29 → 2023-07-31 | 92 | 16 |
+| T3 평가 | 2023-07-31 → 2023-11-21 | 70 | 11 |
+| T4 평가 | 2023-11-21 → 2024-04-19 | 56 | 11 |
+
+T1부터 T4까지의 341건과 성능 저하 60건을 합쳐 고정 전이 성능을 확인했습니다.
+
+| 모델 | T0에서 선택된 정규화 | 미래 AUROC | AUPRC | 재현율 | F1 | 위험도 향상 |
+|---|---|---:|---:|---:|---:|---:|
+| L2 로지스틱 | robust-z | **0.883** | 0.617 | 0.833 | 0.645 | 2.99배 |
+| 2차 로지스틱 | robust-z | 0.860 | 0.558 | 0.817 | **0.649** | 3.06배 |
+| Additive GAM | robust-z | 0.853 | 0.531 | 0.800 | 0.640 | **3.03배** |
+| Extra Trees | robust-z | 0.867 | 0.534 | 0.783 | 0.631 | 3.00배 |
+| RBF-SVM | ECDF | 0.865 | **0.664** | 0.733 | 0.599 | 2.87배 |
+
+T0의 F1 기준으로 정한 공식 선택 모델은 Extra Trees입니다. 미래 구간에서는 L2 로지스틱의 AUROC와 2차 로지스틱의 F1이 가장 높았습니다. 다만 상위 모델의 군집 부트스트랩 구간이 겹쳤기 때문에 한 모델이 항상 낫다고 해석하지 않았습니다. 아래 진단 실험에는 탐지 표면을 살펴볼 수 있고 전이 성능도 비슷한 Additive GAM을 사후 선택해 사용했습니다.
+
+![Additive GAM의 고정 Core4 전이](assets/clark_core4_gam_robust_z_transfer.png)
+
+그림은 4차원 탐지기의 2차원 단면입니다. 빨간 점은 새 성능 저하, 청록색 점은 그 밖의 사례, 검은 테두리는 실제 4차원 경보를 뜻합니다. [L2 로지스틱](assets/clark_core4_l2_robust_z_transfer.png)과 [2차 로지스틱](assets/clark_core4_quadratic_robust_z_transfer.png) 단면도 함께 공개했습니다.
+
+## 탐지 뒤에 무엇을 확인할까
+
+Additive GAM은 미래 341건 가운데 실제 성능 저하 60건 중 48건을 경보로 잡았습니다. 탐지에서 끝내지 않고, 양성 60건과 거짓 경보 42건, 크기를 맞춘 정상 대조군 42건을 다시 실행했습니다. 총 144건에서 11,520개의 답변을 생성했습니다.
+
+| 단계 | 근거를 바꾼 방법 | 이 단계에서 회복할 때 먼저 의심할 부분 |
+|---|---|---|
+| P1 | 원래 검색 결과 | 기준 상태 |
+| P2 | 최신 정답 근거가 상위 10개 안에 들도록 보장 | 검색 범위 |
+| P3 | 최신 정답 근거를 1순위로 이동 | 순위와 위치 |
+| P4 | 결정적인 근거만 제공 | 정보 추출 또는 복잡한 문맥 |
+| P5 | 현재 사실을 짧은 카드로 제공 | 근거 활용과 답변 생성 |
+
+![탐지 결과 그룹별 근거 개입 정확도](assets/clark_detector_linked_probe_accuracy.png)
+
+실제 성능 저하 60건 중 48건이 경보에 걸렸습니다. 이 가운데 5건은 P1에서 실패가 다시 나타나지 않았고, 나머지 43건은 경보에 걸린 뒤 어느 단계에서든 회복했습니다. P5에는 현재 정답 사실이 직접 들어가므로 `43/60`, 71.7%는 진단 가능성의 상한으로 해석했습니다. 운영 환경의 위치 추정률로 사용할 수는 없습니다. P5 이전의 P2부터 P4에서 회복한 사례는 11건이었습니다.
+
+![탐지 결과별 후보 실패 원인](assets/clark_detector_linked_probe_mechanisms.png)
+
+최신 정답 근거가 원래 검색 상위 10개에 있었던 양성 사례가 60건 중 52건이었지만, 재현된 성능 저하는 주로 P4 또는 P5에서 처음 회복했습니다. 이 결과는 이 조건에서 근거 추출과 활용을 먼저 살펴볼 필요가 있음을 보여줍니다. 개입 단계는 점검 후보를 좁히는 방법이며 하나의 원인을 인과적으로 증명하지는 않습니다.
+
+## 저장소 구성
+
+```text
+assets/                     탐지기 단면과 근거 개입 결과 그림
+configs/actual/             민감정보를 뺀 실제 실험 설정
+data/                       합성 예제와 CLARK 준비 안내
+docs/                       방법, 데이터 파이프라인, 결과와 한계
+results/clark_t0/           초기 2축 기준 실험
+results/core4_ml/           Core4 모델 선택과 고정 전이 결과
+results/detector_linked_probe/ 탐지 연계 근거 개입 집계
+scripts/                    검색, 생성, 탐지와 근거 개입 실행 코드
+src/                        공통 RAG, 임베딩, 군집화와 지표 모듈
+tests/                      단위 테스트와 합성 파이프라인 테스트
+```
+
+CLARK 원문 질문과 기사, 사례별 예측, 답변 로그, 모델 가중치, API 인증 정보와 SQLite 인덱스는 공개하지 않았습니다.
+
+## 빠르게 확인하기
 
 ```powershell
 python -m venv .venv
@@ -160,27 +140,14 @@ python -m venv .venv
 .\.venv\Scripts\python.exe scripts\check_public_artifact.py
 ```
 
-The smoke run uses invented data and mock components. It verifies pipeline
-wiring only; it does not reproduce the scientific result.
+이 실행은 직접 만든 합성 데이터와 모의 구성 요소로 파이프라인 연결을 확인합니다. 위 연구 결과를 재현하는 실행은 아닙니다. 전체 재현에는 라이선스를 지켜 준비한 CLARK 원자료와 로컬 DB 스냅샷이 필요합니다. 자세한 내용은 [재현 안내](docs/REPRODUCIBILITY.md)와 [CLARK 데이터 파이프라인](docs/CLARK_DATA_PIPELINE.md)에 정리했습니다.
 
-Full CLARK reproduction starts from licensed source data and prepared local
-snapshots. See [Reproducibility](docs/REPRODUCIBILITY.md) and the
-[CLARK data pipeline](docs/CLARK_DATA_PIPELINE.md).
+## 해석 범위
 
-## Evidence boundaries
+- 정답은 오프라인 라벨 생성과 평가에만 사용했습니다. 미래 탐지기의 입력에는 넣지 않았습니다.
+- Core4 미래 341건과 초기 186건 실험은 서로 다른 평가 집합이므로 직접적인 성능 향상으로 비교하지 않습니다.
+- 탐지기는 업데이트 전후의 상대 위험을 추정합니다. 처음 보는 답변 하나의 정오를 판정하지 않습니다.
+- 결과는 이 저장소에서 사용한 CLARK, 검색기, 생성 모델과 프롬프트 조건에서 확인했습니다.
+- 근거 개입에서의 회복은 점검 후보를 제시할 뿐, 하나의 원인을 확정하지 않습니다.
 
-- Gold answers are used to calibrate/evaluate offline labels, never as future detector inputs.
-- The Core4 all-future endpoint and the earlier 186-case confirmatory endpoint are different cohorts and must not be compared as a direct improvement claim.
-- The detector estimates relative update risk, not absolute answer correctness.
-- Detector validity is demonstrated only for the measured CLARK model/retriever/prompt regime.
-- Probe recovery stages do not establish a unique causal root cause.
-
-## Source and project scope
-
-CLARK source: [Language Modeling with Editable External Knowledge](https://aclanthology.org/2025.findings-naacl.168/).
-
-The project owner defined the research question and temporal protocol, selected
-the operational endpoint, ran and audited the experiments, and revised the
-claims around observed failures. The repository preserves the code, aggregate
-results and audit notes needed to inspect that process; licensed source data,
-case-level generations and model artifacts remain outside the public release.
+CLARK 출처: [Language Modeling with Editable External Knowledge](https://aclanthology.org/2025.findings-naacl.168/)
