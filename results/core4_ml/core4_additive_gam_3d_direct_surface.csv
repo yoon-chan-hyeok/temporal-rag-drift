@@ -1,0 +1,2 @@
+﻿model,representation,surface_type,future_n,future_positive,future_auroc,future_auprc,future_f1,threshold,shift_contrast_energy_minus_js,uncertainty_contrast_entropy_minus_volume,output
+additive_gam,core4_robust_z,direct_4d_slice,341,60,0.8529952550415183,0.5305857205171726,0.64,0.5879487749417575,0.017985460914512127,-0.00015245248277747923,assets/clark_core4_gam_3d_direct_surface.png

@@ -89,9 +89,18 @@ T1부터 T4까지의 341건과 성능 저하 60건을 합쳐 고정 전이 성�
 
 T0의 F1 기준으로 정한 공식 선택 모델은 Extra Trees입니다. 미래 구간에서는 L2 로지스틱의 AUROC와 2차 로지스틱의 F1이 가장 높았습니다. 다만 상위 모델의 군집 부트스트랩 구간이 겹쳤기 때문에 한 모델이 항상 낫다고 해석하지 않았습니다. 아래 진단 실험에는 탐지 표면을 살펴볼 수 있고 전이 성능도 비슷한 Additive GAM을 사후 선택해 사용했습니다.
 
-![Additive GAM의 고정 Core4 전이](assets/clark_core4_gam_robust_z_transfer.png)
+![고정 Core4 Additive GAM 3차원 위험 표면](assets/clark_core4_gam_3d_direct_surface.png)
 
-그림은 4차원 탐지기의 2차원 단면입니다. 빨간 점은 새 성능 저하, 청록색 점은 그 밖의 사례, 검은 테두리는 실제 4차원 경보를 뜻합니다. [L2 로지스틱](assets/clark_core4_l2_robust_z_transfer.png)과 [2차 로지스틱](assets/clark_core4_quadratic_robust_z_transfer.png) 단면도 함께 공개했습니다.
+3차원 표면은 4차원 GAM을 2개의 해석 축으로 보인 직접 단면입니다. 이동량 축은
+robust-z Energy와 JS를, 불확실성 변화 축은 robust-z 엔트로피 변화와 부피
+변화를 같이 움직입니다. 색 표면은 T0의 변수 쌍 내 중앙 차이를 고정해 계산했고,
+점의 높이는 각 질문의 실제 4차원 GAM 위험 확률입니다.
+
+![Additive GAM의 구간별 고정 Core4 전이](assets/clark_core4_gam_robust_z_transfer.png)
+
+구간별 그림의 빨간 점은 새 성능 저하, 청록색 점은 그 밖의 사례,
+검은 테두리는 실제 4차원 경보를 뜻합니다. [L2 로지스틱](assets/clark_core4_l2_robust_z_transfer.png)과
+[2차 로지스틱](assets/clark_core4_quadratic_robust_z_transfer.png) 단면도 함께 공개했습니다.
 
 ## 탐지 뒤에 무엇을 확인할까
 
