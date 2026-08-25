@@ -2,7 +2,7 @@
 
 [한국어](README.md) | [English](README_EN.md)
 
-# Temporal RAG Drift Detection and Diagnosis
+# Temporal RAG Failure Detection and Diagnosis
 
 **Prioritize questions that may have newly degraded after a cumulative knowledge-base update, then narrow the inspection path with evidence interventions.**
 

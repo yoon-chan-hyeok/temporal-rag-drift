@@ -2,7 +2,7 @@
 
 [한국어](README.md) | [English](README_EN.md)
 
-# Temporal RAG Drift Detection & Diagnosis
+# Temporal RAG Failure Detection & Diagnosis
 
 **누적 knowledge DB를 업데이트한 직후, 최신 gold answer 없이 query-level degradation risk를 순위화하고 evidence intervention으로 failure stage를 좁히는 framework입니다.**
 
