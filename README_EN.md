@@ -2,9 +2,9 @@
 
 [한국어](README.md) | [English](README_EN.md)
 
-# CLARK Temporal RAG Failure Detection
+# Temporal RAG Drift Detection and Diagnosis
 
-**Freeze a detector on the first database update, transfer it to later news snapshots, then probe flagged failures.**
+**Prioritize questions that may have newly degraded after a cumulative knowledge-base update, then narrow the inspection path with evidence interventions.**
 
 ![Python 3.11](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
 ![Dataset CLARK](https://img.shields.io/badge/Dataset-CLARK--News-0F766E)
@@ -14,24 +14,58 @@
 
 </div>
 
-## What this project asks
+## Assumed operating setting
 
-When a cumulative news database changes from `Kx` to `Ky`, can a fixed RAG
-agent's answer distributions identify questions that **newly lose accuracy**,
-before new gold labels are available in operation?
+RAG systems that answer questions about news, policies, and regulations keep
+both old and new documents. Adding current evidence does not guarantee that the
+system will use it. Conflicting retrieval results can make an answer unstable
+or leave the model anchored to an outdated fact.
 
-This repository studies that question with CLARK temporal QA and timestamped
-news evidence. The detector receives no future correctness label. It only sees
-four changes measured from 16 answers before and after the update:
+This project models a batch monitoring workflow with the following conditions:
+
+| Condition | Assumption |
+|---|---|
+| Database update | `Ky` is `Kx` plus newly available documents, not a clean replacement database. |
+| RAG stack | The retriever, prompt, and generator stay fixed so the experiment isolates the database update. |
+| Monitored questions | A replay or regression set can be run against both snapshots. |
+| Current gold labels | They are unavailable during future monitoring. Historical labels are used only for initial selection and offline evaluation. |
+| Observation unit | Each question produces 16 answers per snapshot so the detector can compare answer distributions. |
+
+The detector does not judge the correctness of one unseen live response. It
+ranks replayed questions by relative post-update degradation risk.
+
+## Where it fits
+
+| Workflow | Output used by an operator |
+|---|---|
+| Periodic news, policy, or regulation updates | A risk-ranked review queue after each knowledge-base refresh. |
+| Pre-release database checks | A smaller set of alarmed questions to inspect before promoting a new snapshot. |
+| Failure triage | A candidate inspection stage covering retrieval coverage, ranking, context complexity, or evidence use. |
+
+The intended batch flow runs the monitored questions against `Kx` and `Ky`
+after ingestion. It builds a risk-ranked review queue and sends only alarmed
+cases to the evidence probe.
+
+The repository produces a review priority and an intervention-linked diagnostic
+candidate. It does not implement automatic rollback, automatic repair, or a
+causal root-cause certificate.
+
+## Why the design looks this way
+
+| Design choice | Reason |
+|---|---|
+| Cumulative `Kx` and `Ky` snapshots | Production knowledge bases often retain old evidence when new evidence arrives. |
+| 16 answers per snapshot | A single stochastic response cannot distinguish sampling noise from a systematic distribution change. |
+| Two shift and two uncertainty-change features | The answer can move while becoming more confident, or stay near the old answer while becoming less stable. |
+| Freeze the detector at `T0` | Future labels are not available for refitting after every update. |
+| Probe flagged questions with P1 to P5 | A risk score alone does not identify which RAG stage should be inspected first. |
+
+The detector uses four temporal changes:
 
 ```text
 Shift       = Energy distance + semantic-cluster JS divergence
 Uncertainty = delta semantic entropy + delta semantic volume
 ```
-
-The operating unit is a replayed question or probe set observed at both
-snapshots. This is a relative degradation-risk monitor, not a correctness
-certificate for one previously unseen answer.
 
 ## End-to-end design
 
@@ -90,11 +124,19 @@ not establish one universally superior classifier. Additive GAM is retained
 for the diagnostic extension because its Core4 surface is inspectable and its
 frozen performance is comparable; this choice is explicitly post-hoc.
 
-![Additive GAM frozen Core4 transfer](assets/clark_core4_gam_robust_z_transfer.png)
+![Frozen Core4 Additive GAM 3D risk surface](assets/clark_core4_gam_3d_direct_surface.png)
 
-The background is a direct 2D slice of a four-dimensional frozen detector. Red
-points are new degradations, teal points are other outcomes, and black rings
-show actual 4D alarms. Additional surfaces are provided for
+The 3D surface is a direct slice of the four-dimensional GAM expressed through
+two inspection axes. The shift axis moves robust-z Energy and JS together. The
+uncertainty-change axis moves robust-z entropy and volume changes together.
+The paired feature differences stay fixed at their T0 median values, while each
+point is plotted at its actual four-dimensional GAM risk.
+
+![Additive GAM frozen Core4 transfer by update](assets/clark_core4_gam_robust_z_transfer.png)
+
+In the update panels, red points are new degradations, teal points are other
+outcomes, and black rings show actual four-dimensional alarms. Additional
+surfaces are provided for
 [L2 logistic](assets/clark_core4_l2_robust_z_transfer.png) and
 [quadratic logistic](assets/clark_core4_quadratic_robust_z_transfer.png).
 
@@ -177,12 +219,6 @@ snapshots. See [Reproducibility](docs/REPRODUCIBILITY.md) and the
 - Detector validity is demonstrated only for the measured CLARK model/retriever/prompt regime.
 - Probe recovery stages do not establish a unique causal root cause.
 
-## Source and project scope
+## Source
 
 CLARK source: [Language Modeling with Editable External Knowledge](https://aclanthology.org/2025.findings-naacl.168/).
-
-The project owner defined the research question and temporal protocol, selected
-the operational endpoint, ran and audited the experiments, and revised the
-claims around observed failures. The repository preserves the code, aggregate
-results and audit notes needed to inspect that process; licensed source data,
-case-level generations and model artifacts remain outside the public release.

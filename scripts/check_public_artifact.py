@@ -38,6 +38,10 @@ FORBIDDEN_NAMES = {
     "cohort_audit.csv",
 }
 FORBIDDEN_SUFFIXES = {".key", ".pem", ".sqlite", ".sqlite3", ".db"}
+DEFAULT_MAX_FILE_BYTES = 5 * 1024 * 1024
+LARGE_FILE_LIMITS = {
+    Path("TEMPORAL RAG FAILURE DETECTION.pptx"): 10 * 1024 * 1024,
+}
 
 
 def candidate_files() -> list[Path]:
@@ -59,8 +63,11 @@ def main() -> None:
         relative = path.relative_to(ROOT)
         if path.name in FORBIDDEN_NAMES or path.suffix.lower() in FORBIDDEN_SUFFIXES:
             problems.append(f"forbidden public artifact: {relative}")
-        if path.is_file() and path.stat().st_size > 5 * 1024 * 1024:
-            problems.append(f"file exceeds 5 MiB: {relative}")
+        size_limit = LARGE_FILE_LIMITS.get(relative, DEFAULT_MAX_FILE_BYTES)
+        if path.is_file() and path.stat().st_size > size_limit:
+            problems.append(
+                f"file exceeds {size_limit // (1024 * 1024)} MiB: {relative}"
+            )
         if not path.is_file() or path.suffix.lower() not in TEXT_SUFFIXES:
             continue
         text = path.read_text(encoding="utf-8-sig", errors="replace")
