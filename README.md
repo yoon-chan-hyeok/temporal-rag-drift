@@ -97,6 +97,8 @@ Uncertainty change  = Δ semantic entropy + Δ semantic volume
 | 의미 분석 | BGE 답변 임베딩 + `microsoft/deberta-large-mnli` 군집화 |
 | 성능 저하 정의 | 업데이트 뒤 정확도가 0.10 이상 하락한 사례. 두 시점 모두 실패한 사례는 양성에서 제외 |
 
+CLARK를 사용한 이유는 시간에 따라 정답이 달라지는 질문과 뉴스 근거가 연결돼 있어, 동일한 규칙으로 과거 `Kx`와 누적 업데이트 뒤 `Ky`를 구성할 수 있기 때문입니다. 실제 서비스 DB를 공개하거나 과거 상태로 되돌리지 않고도 temporal update를 통제해 볼 수 있는 대리 환경입니다. 따라서 이 결과를 다른 도메인의 운영 성능으로 바로 일반화하지 않습니다. 데이터 구성 과정은 [CLARK 데이터 파이프라인](docs/CLARK_DATA_PIPELINE.md)에 정리했습니다.
+
 ## 6. Results: frozen temporal transfer
 
 Model family, representation, hyperparameter와 alarm threshold는 첫 업데이트 `T0`만 보고 정했습니다. 이후 네 update에는 retraining이나 threshold tuning 없이 적용했습니다.
@@ -109,17 +111,18 @@ Model family, representation, hyperparameter와 alarm threshold는 첫 업데이
 | T3 평가 | 2023-07-31 → 2023-11-21 | 70 | 11 |
 | T4 평가 | 2023-11-21 → 2024-04-19 | 56 | 11 |
 
-T1부터 T4까지의 341건과 성능 저하 60건을 합쳐 고정 전이 성능을 확인했습니다.
+T1부터 T4까지의 341건과 성능 저하 60건을 합쳐 고정 전이 성능을 확인했습니다. 비교한 9개 분류기 계열 가운데 T0 selection winner, 미래 지표별 상위 모델과 diagnosis에 사용한 모델을 표에 제시했습니다.
 
 | 모델 | T0에서 선택된 정규화 | 미래 AUROC | AUPRC | 재현율 | F1 | 위험도 향상 |
 |---|---|---:|---:|---:|---:|---:|
-| L2 로지스틱 | robust-z | **0.883** | 0.617 | 0.833 | 0.645 | 2.99배 |
-| 2차 로지스틱 | robust-z | 0.860 | 0.558 | 0.817 | **0.649** | 3.06배 |
-| Additive GAM | robust-z | 0.853 | 0.531 | 0.800 | 0.640 | **3.03배** |
+| Elastic Net | robust-z | **0.886** | 0.642 | 0.833 | 0.633 | 2.90배 |
+| L2 로지스틱 | robust-z | 0.883 | 0.617 | 0.833 | 0.645 | 2.99배 |
+| 2차 로지스틱 | robust-z | 0.860 | 0.558 | 0.817 | **0.649** | **3.06배** |
+| Additive GAM | robust-z | 0.853 | 0.531 | 0.800 | 0.640 | 3.03배 |
 | Extra Trees | robust-z | 0.867 | 0.534 | 0.783 | 0.631 | 3.00배 |
 | RBF-SVM | ECDF | 0.865 | **0.664** | 0.733 | 0.599 | 2.87배 |
 
-T0 F1 기준의 공식 selection winner는 Extra Trees입니다. Future split에서는 L2 logistic의 AUROC와 quadratic logistic의 F1이 가장 높았습니다. 다만 상위 모델의 cluster bootstrap interval이 겹쳤기 때문에 한 classifier가 항상 우월하다고 해석하지 않았습니다. 이어지는 diagnosis experiment에는 feature별 risk curve를 확인할 수 있고 frozen transfer 성능도 비슷한 Additive GAM을 post-hoc으로 선택했습니다.
+T0 F1 기준의 공식 selection winner는 Extra Trees입니다. 미래 구간을 사후 비교하면 Elastic Net의 AUROC, RBF-SVM의 AUPRC와 2차 로지스틱의 F1이 각각 가장 높았습니다. 미래 label을 보고 배포 모델을 다시 고른 것은 아니며, 상위 모델의 cluster bootstrap interval도 겹쳤습니다. 이어지는 diagnosis experiment에는 feature별 risk curve를 확인할 수 있고 frozen transfer 성능도 비슷한 Additive GAM을 post-hoc으로 선택했습니다. 전체 후보와 T0 선택 결과는 [frozen_future_model_summary.csv](results/core4_ml/frozen_future_model_summary.csv)에서 확인할 수 있습니다.
 
 ![고정 Core4 Additive GAM 3차원 위험 표면](assets/clark_core4_gam_3d_direct_surface.png)
 
@@ -141,6 +144,8 @@ Detector가 찾은 위험 질문만으로는 failure mechanism을 알 수 없습
 ![P1부터 P5까지 evidence intervention ladder](assets/ppt_intervention_probe.png)
 
 Additive GAM은 미래 341건 가운데 실제 성능 저하 60건 중 48건을 경보로 잡았습니다. 탐지에서 끝내지 않고, 양성 60건과 거짓 경보 42건, 크기를 맞춘 정상 대조군 42건을 다시 실행했습니다. 총 144건에서 11,520개의 답변을 생성했습니다.
+
+Screening confusion matrix와 probe 집계는 [screening_performance.csv](results/detector_linked_probe/screening_performance.csv)와 [진단 보고서](results/detector_linked_probe/report_ko.md)에 공개했습니다.
 
 | 단계 | 근거를 바꾼 방법 | 이 단계에서 회복할 때 먼저 의심할 부분 |
 |---|---|---|

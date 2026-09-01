@@ -89,6 +89,8 @@ flowchart LR
 | Semantic analysis | BGE answer embeddings + `microsoft/deberta-large-mnli` clustering |
 | Endpoint | `accuracy_x - accuracy_y >= 0.10`, excluding persistent failure from the positive class |
 
+CLARK links time-valid answers to external news evidence, which makes it possible to construct historical `Kx` and cumulative `Ky` snapshots under one rule. It is a controlled proxy for a temporal knowledge update, not a reproduction of a specific production database. The result should therefore be interpreted within this experimental setting. See the [CLARK data pipeline](docs/CLARK_DATA_PIPELINE.md) for the construction procedure.
+
 ## Frozen temporal transfer
 
 Model family, representation, hyperparameters and alarm threshold are selected
@@ -106,23 +108,29 @@ applied without refitting to four later cumulative-news updates.
 ### Core4 model comparison
 
 Nine classifier families and three T0-fitted normalizations were evaluated.
-The table reports each model's T0-selected representation and its frozen
-T1-T4 result (`N=341`, 60 positive events).
+The table shows the T0 selection winner, the future metric leaders, and the
+model used for diagnosis. Results are frozen T1-T4 estimates (`N=341`, 60
+positive events); the complete candidate table is linked below.
 
 | Model | Normalization | Future AUROC | AUPRC | Recall | F1 | Risk lift |
 |---|---|---:|---:|---:|---:|---:|
-| L2 logistic | robust-z | **0.883** | 0.617 | 0.833 | 0.645 | 2.99x |
-| Quadratic logistic | robust-z | 0.860 | 0.558 | 0.817 | **0.649** | 3.06x |
-| Additive GAM | robust-z | 0.853 | 0.531 | 0.800 | 0.640 | **3.03x** |
+| Elastic Net | robust-z | **0.886** | 0.642 | 0.833 | 0.633 | 2.90x |
+| L2 logistic | robust-z | 0.883 | 0.617 | 0.833 | 0.645 | 2.99x |
+| Quadratic logistic | robust-z | 0.860 | 0.558 | 0.817 | **0.649** | **3.06x** |
+| Additive GAM | robust-z | 0.853 | 0.531 | 0.800 | 0.640 | 3.03x |
 | Extra Trees | robust-z | 0.867 | 0.534 | 0.783 | 0.631 | 3.00x |
 | RBF-SVM | ECDF | 0.865 | **0.664** | 0.733 | 0.599 | 2.87x |
 
 Extra Trees had the highest T0 F1 and is the formal T0-selection winner.
-Quadratic logistic had the highest future F1 descriptively. Pairwise clustered
-bootstrap intervals among the leading models include zero, so the results do
-not establish one universally superior classifier. Additive GAM is retained
-for the diagnostic extension because its Core4 surface is inspectable and its
-frozen performance is comparable; this choice is explicitly post-hoc.
+In a retrospective comparison of the future splits, Elastic Net had the
+highest AUROC, RBF-SVM the highest AUPRC, and quadratic logistic the highest
+F1. Future labels were not used to reselect the deployed detector. Pairwise
+clustered bootstrap intervals among the leading models include zero, so the
+results do not establish one universally superior classifier. Additive GAM is
+retained for the diagnostic extension because its Core4 surface is inspectable
+and its frozen performance is comparable; this choice is explicitly post-hoc.
+The full candidate table and T0 selections are available in
+[frozen_future_model_summary.csv](results/core4_ml/frozen_future_model_summary.csv).
 
 ![Frozen Core4 Additive GAM 3D risk surface](assets/clark_core4_gam_3d_direct_surface.png)
 
@@ -151,6 +159,10 @@ The frozen Additive GAM screened all 341 future events:
 All 60 positive events, all 42 false positives, and 42 matched true-negative
 controls were replayed through a blinded evidence ladder (`144` events,
 `11,520` generated answers):
+
+The screening confusion matrix and probe aggregates are available in
+[screening_performance.csv](results/detector_linked_probe/screening_performance.csv)
+and the [diagnostic report](results/detector_linked_probe/report_ko.md).
 
 | Stage | Evidence intervention | Earliest recovery suggests |
 |---|---|---|
