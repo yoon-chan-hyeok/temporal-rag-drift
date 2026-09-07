@@ -14,6 +14,17 @@
 
 </div>
 
+Updating a news or policy knowledge base leaves a practical gap: current answers
+may change before a new gold-answer set is ready. This project compares answer
+distributions before and after the update to decide which questions need review
+first. It then changes the evidence supplied to selected questions to identify
+a candidate RAG stage for inspection.
+
+The **T0-selected Core4 + Extra Trees detector flagged 89 of 341 future update
+events and captured 47 of the 60 new degradations**. This tests whether the
+detector can concentrate the review queue. The separate diagnostic extension
+uses a post-hoc Additive GAM and benchmark-selected current evidence.
+
 ## Assumed operating setting
 
 RAG systems that answer questions about news, policies, and regulations keep
@@ -34,7 +45,7 @@ This project models a batch monitoring workflow with the following conditions:
 The detector does not judge the correctness of one unseen live response. It
 ranks replayed questions by relative post-update degradation risk.
 
-## Where it fits
+## Intended operating workflow
 
 | Workflow | Output used by an operator |
 |---|---|
@@ -46,19 +57,24 @@ The intended batch flow runs the monitored questions against `Kx` and `Ky`
 after ingestion. It builds a risk-ranked review queue and sends only alarmed
 cases to the evidence probe.
 
-The repository produces a review priority and an intervention-linked diagnostic
-candidate. It does not implement automatic rollback, automatic repair, or a
-causal root-cause certificate.
+The intended outputs are a review priority and a candidate inspection stage.
+Review-time savings and automatic rollback or repair have not been evaluated.
+The current probe uses benchmark-selected current evidence; an operational
+version would also need a way to prepare that evidence from available logs
+and documents.
 
 ## Why the design looks this way
 
-| Design choice | Reason |
-|---|---|
-| Cumulative `Kx` and `Ky` snapshots | Production knowledge bases often retain old evidence when new evidence arrives. |
-| 16 answers per snapshot | A single stochastic response cannot distinguish sampling noise from a systematic distribution change. |
-| Two shift and two uncertainty-change features | The answer can move while becoming more confident, or stay near the old answer while becoming less stable. |
-| Freeze the detector at `T0` | Future labels are not available for refitting after every update. |
-| Probe flagged questions with P1 to P5 | A risk score alone does not identify which RAG stage should be inspected first. |
+The idea is to keep **where the answers move** separate from **how dispersed
+they become**. A move toward the current answer and a confident move toward a
+wrong answer can both produce large shifts. An answer distribution can also
+stay near its old position while becoming less stable. Core4 retains both
+shift and uncertainty change to represent these cases.
+
+The detector and threshold are frozen at the first update, `T0`, because new
+gold answers would not be available for refitting after each later update.
+Evidence interventions follow detection because a risk score alone does not
+specify which RAG stage to inspect.
 
 The detector uses four temporal changes:
 
@@ -124,9 +140,13 @@ positive events); the complete candidate table is linked below.
 Extra Trees had the highest T0 F1 and is the formal T0-selection winner.
 In a retrospective comparison of the future splits, Elastic Net had the
 highest AUROC, RBF-SVM the highest AUPRC, and quadratic logistic the highest
-F1. Future labels were not used to reselect the deployed detector. Pairwise
-clustered bootstrap intervals among the leading models include zero, so the
-results do not establish one universally superior classifier. Additive GAM is
+F1. Future labels were not used to reselect the deployed detector. The three
+question-cluster bootstrap comparisons of GAM against L2 logistic, quadratic
+logistic and Extra Trees each had a 95% F1-difference interval containing zero.
+The results do not establish one universally superior classifier. For the
+T0-selected Extra Trees detector, the degradation rate among alarms was
+47/89 (52.8%), compared with 60/341 (17.6%) in the full cohort. This gives a
+3.00x risk lift, with 42 false alarms and 13 missed degradations. Additive GAM is
 retained for the diagnostic extension because its Core4 surface is inspectable
 and its frozen performance is comparable; this choice is explicitly post-hoc.
 The full candidate table and T0 selections are available in
@@ -225,7 +245,8 @@ snapshots. See [Reproducibility](docs/REPRODUCIBILITY.md) and the
 
 ## Evidence boundaries
 
-- Gold answers are used to calibrate/evaluate offline labels, never as future detector inputs.
+- Gold answers are used for T0 fitting and selection, offline evaluation, and evidence preparation in the separate diagnostic experiment. They are never future detector inputs.
+- Core4 is evaluated on questions whose correct answers change over time. Performance on an operational review set that also contains stable-answer questions needs further evaluation.
 - The Core4 all-future endpoint and the earlier 186-case confirmatory endpoint are different cohorts and must not be compared as a direct improvement claim.
 - The detector estimates relative update risk, not absolute answer correctness.
 - Detector validity is demonstrated only for the measured CLARK model/retriever/prompt regime.

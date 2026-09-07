@@ -8,8 +8,8 @@ in the negative class.
 
 | Model | Representation | T0 F1 | Future AUROC | AUPRC | Precision | Recall | F1 | Risk lift |
 |---|---|---:|---:|---:|---:|---:|---:|---:|
-| L2 logistic | robust-z | 0.691 | **0.883** | 0.617 | 0.526 | 0.833 | 0.645 | 2.991x |
-| Elastic net | robust-z | 0.679 | 0.886 | 0.642 | 0.510 | 0.833 | 0.633 | 2.900x |
+| L2 logistic | robust-z | 0.691 | 0.883 | 0.617 | 0.526 | 0.833 | 0.645 | 2.991x |
+| Elastic net | robust-z | 0.679 | **0.886** | 0.642 | 0.510 | 0.833 | 0.633 | 2.900x |
 | Quadratic logistic | robust-z | 0.692 | 0.860 | 0.558 | 0.538 | 0.817 | **0.649** | 3.060x |
 | Additive GAM | robust-z | 0.679 | 0.853 | 0.531 | 0.533 | 0.800 | 0.640 | 3.031x |
 | RBF-SVM | ECDF | 0.654 | 0.865 | **0.664** | 0.506 | 0.733 | 0.599 | 2.874x |
@@ -18,9 +18,16 @@ in the negative class.
 | XGBoost | ECDF | 0.694 | 0.868 | 0.519 | 0.533 | 0.667 | 0.593 | 3.031x |
 | MLP | robust-z | 0.640 | 0.860 | 0.563 | 0.445 | 0.883 | 0.592 | 2.531x |
 
-Extra Trees is the formal T0 F1 winner. Quadratic logistic is the descriptive
-future F1 winner. The latter cannot replace the former as a prespecified
-selection because future labels were observed before making that comparison.
+Extra Trees is the formal T0 F1 winner. At its frozen threshold it flagged
+89 of 341 future events, capturing 47 of the 60 new degradations. There were
+42 false alarms and 13 missed degradations. Alarm precision was 52.8%,
+compared with the full-cohort degradation rate of 17.6%, giving a risk lift
+of 3.00x.
+
+Elastic net, RBF-SVM and quadratic logistic are the descriptive future
+AUROC, AUPRC and F1 leaders, respectively. They cannot replace Extra Trees as
+the prespecified selection because future labels were observed before
+making that comparison.
 
 Paired question-cluster bootstrap differences among leading models:
 

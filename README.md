@@ -4,7 +4,7 @@
 
 # Temporal RAG Failure Detection & Diagnosis
 
-**누적 knowledge DB를 업데이트한 직후, 최신 gold answer 없이 query-level degradation risk를 순위화하고 evidence intervention으로 failure stage를 좁히는 framework입니다.**
+**DB 업데이트 뒤 답변이 나빠졌을 가능성이 큰 질문을 먼저 고르고, 어떤 RAG 단계를 점검할지 좁히는 연구입니다.**
 
 ![Python 3.11](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
 ![Dataset CLARK](https://img.shields.io/badge/Dataset-CLARK--News-0F766E)
@@ -15,11 +15,13 @@
 
 </div>
 
+뉴스·정책 문서를 갱신할 때마다 모든 질문의 최신 정답을 다시 만들기는 어렵습니다. 같은 질문에 대한 업데이트 전후의 답변 분포를 비교해, 정답 검수가 준비되기 전에 확인할 질문의 순서를 정했습니다. 탐지한 사례에는 검색 근거를 바꿔 넣는 intervention-based probing을 적용해 회복되는 단계를 살폈습니다.
+
+첫 업데이트에서 선택하고 고정한 **Core4 + Extra Trees는 미래 평가 341건 중 89건에 경보를 냈고, 그 안에 실제 성능 저하 60건 중 47건이 포함됐습니다.** 모든 질문을 같은 우선순위로 보는 대신 위험 사례를 모아 검토할 수 있는지 확인한 결과입니다. 근거 개입 실험은 별도의 Additive GAM을 사용했으며, 최신 정답 근거를 활용한 탐색적 진단입니다.
+
 ## 1. Problem and operating setting
 
-뉴스, 정책, 규정처럼 정답이 시간에 따라 바뀌는 지식에서는 문서를 최신화해도 RAG가 새 사실을 제대로 쓰지 못할 수 있습니다. 운영 DB에는 과거 문서가 남기 때문에 최신 evidence와 outdated evidence가 함께 검색됩니다. 그러면 같은 query의 answer distribution이 흔들리거나, 모델이 예전 답을 계속 고를 수 있습니다.
-
-기존 temporal RAG 평가는 업데이트가 끝난 뒤 새 gold answer로 정확도를 계산하는 방식이 많습니다. 실제 운영에서는 DB를 갱신할 때마다 모든 질문의 최신 정답을 다시 만들기 어렵습니다. 이 프로젝트는 그 사이에 생기는 공백을 다룹니다. DB 업데이트 전후의 RAG behavior만 보고 새 성능 저하 가능성이 큰 질문을 먼저 고른 뒤, 사람이 볼 review queue를 만드는 것이 목표입니다.
+문서를 최신화해도 RAG가 새 사실을 제대로 쓰지 못할 수 있습니다. 과거 문서가 남아 있는 DB에서는 최신 evidence와 outdated evidence가 함께 검색되기 때문입니다. 같은 query의 답변이 여러 후보로 흩어질 수도 있고, 예전 답으로 계속 수렴할 수도 있습니다. 단순히 답이 바뀌었는지 또는 confidence가 낮은지만 확인해서는 두 경우를 충분히 구분하기 어렵다고 봤습니다.
 
 ![Gold answer가 없는 RAG update monitoring 문제](assets/ppt_problem_setting.png)
 
@@ -35,7 +37,7 @@
 
 따라서 이 detector는 처음 들어온 질문 하나의 정오를 실시간으로 판정하지 않습니다. DB 업데이트 전후를 모두 관측할 수 있는 질문을 대상으로, 어떤 질문부터 사람이 확인해야 하는지 순서를 정합니다. 여기서 `label-free`는 detector가 무학습이라는 뜻이 아니라, future update를 감시할 때 새 gold answer를 입력으로 쓰지 않는다는 뜻입니다.
 
-## 2. Use cases in production
+## 2. 적용을 가정한 운영 흐름
 
 | 적용 장면 | 이 프로젝트가 제공하는 정보 |
 |---|---|
@@ -45,17 +47,13 @@
 
 운영에 적용한다면 DB ingestion이 끝난 뒤 monitoring query set을 `Kx`와 `Ky`에 다시 실행합니다. Detector는 degradation risk 순으로 review queue를 만들고, alarm case만 intervention probe로 넘깁니다.
 
-출력은 두 가지입니다. 첫째는 질문별 상대 위험도와 검수 우선순위이고, 둘째는 근거 개입에서 처음 회복한 단계입니다. 자동 롤백이나 자동 수정은 구현 범위가 아닙니다. 회복 단계 역시 원인을 확정하는 값이 아니라 다음 점검 대상을 고르는 단서입니다.
+출력은 질문별 상대 위험도와 근거 개입에서 처음 회복한 단계입니다. 이를 검수 목록과 담당 단계별 점검에 연결하는 것이 예상 활용 방식입니다. 실제 서비스에서의 검수 시간 절감이나 자동 롤백·수정은 검증하지 않았습니다. 특히 현재 probe는 benchmark의 최신 정답 근거를 사용하므로, 운영 로그만으로 같은 진단을 수행하려면 개입 근거를 마련하는 과정이 추가로 필요합니다.
 
 ## 3. Design rationale
 
-| 설계 선택 | 이유 |
-|---|---|
-| 과거 문서가 남는 누적 `Kx`와 `Ky` 비교 | 운영 DB에서는 새 사실이 추가되어도 예전 사실이 함께 검색될 수 있기 때문입니다. |
-| 스냅샷마다 16회 답변 생성 | 생성 모델의 우연한 한 번을 실패로 오해하지 않고, 답변이 체계적으로 이동하거나 퍼지는지 보기 위해서입니다. |
-| 이동량 2개와 불확실성 변화 2개를 함께 사용 | 답이 크게 바뀌면서 한 답으로 수렴하는 경우와, 답은 비슷하지만 흔들림이 커지는 경우를 모두 남기기 위해서입니다. |
-| 첫 업데이트 `T0`에서 detector와 threshold를 고정 | 미래 업데이트의 최신 정답을 보고 model이나 alarm threshold를 다시 맞출 수 없는 운영 상황을 모사하기 위해서입니다. |
-| 탐지 후 P1부터 P5까지 evidence intervention | Risk alarm만으로는 retrieval과 generation 중 어느 부분을 확인해야 할지 알 수 없기 때문입니다. |
+설계의 출발점은 **답변이 어디로 이동했는지와 얼마나 흩어졌는지를 함께 보자**는 것이었습니다. 새 정답으로 안정적으로 바뀐 경우와 자신 있게 오답을 반복하는 경우는 모두 큰 shift를 보일 수 있습니다. 반대로 평균적인 답은 비슷해도 불확실성이 커질 수 있습니다. 그래서 shift와 uncertainty change를 별개의 정보로 남겼습니다.
+
+운영 조건은 시간 분할에도 반영했습니다. 첫 업데이트 `T0`에서 detector와 threshold를 정한 뒤, 이후 업데이트에는 새 정답을 보고 조정하지 않고 적용했습니다. 위험 점수만으로는 확인할 RAG 단계를 알 수 없으므로, 탐지 이후에 evidence intervention을 붙였습니다.
 
 ## 4. Method
 
@@ -95,7 +93,7 @@ Uncertainty change  = Δ semantic entropy + Δ semantic volume
 | 검색 | SQLite FTS5 BM25 + `BAAI/bge-large-en-v1.5` + RRF |
 | 답변 생성 | `gpt-5.6-luna`, temperature 0.8, top-p 0.95, 조건별 16회 |
 | 의미 분석 | BGE 답변 임베딩 + `microsoft/deberta-large-mnli` 군집화 |
-| 성능 저하 정의 | 업데이트 뒤 정확도가 0.10 이상 하락한 사례. 두 시점 모두 실패한 사례는 양성에서 제외 |
+| 성능 저하 정의 | 업데이트 뒤 정확도가 10%p 이상 하락한 사례. 두 시점 모두 정확도가 50% 미만인 persistent failure는 양성에서 제외 |
 
 CLARK를 사용한 이유는 시간에 따라 정답이 달라지는 질문과 뉴스 근거가 연결돼 있어, 동일한 규칙으로 과거 `Kx`와 누적 업데이트 뒤 `Ky`를 구성할 수 있기 때문입니다. 실제 서비스 DB를 공개하거나 과거 상태로 되돌리지 않고도 temporal update를 통제해 볼 수 있는 대리 환경입니다. 따라서 이 결과를 다른 도메인의 운영 성능으로 바로 일반화하지 않습니다. 데이터 구성 과정은 [CLARK 데이터 파이프라인](docs/CLARK_DATA_PIPELINE.md)에 정리했습니다.
 
@@ -111,18 +109,20 @@ Model family, representation, hyperparameter와 alarm threshold는 첫 업데이
 | T3 평가 | 2023-07-31 → 2023-11-21 | 70 | 11 |
 | T4 평가 | 2023-11-21 → 2024-04-19 | 56 | 11 |
 
-T1부터 T4까지의 341건과 성능 저하 60건을 합쳐 고정 전이 성능을 확인했습니다. 비교한 9개 분류기 계열 가운데 T0 selection winner, 미래 지표별 상위 모델과 diagnosis에 사용한 모델을 표에 제시했습니다.
+T1부터 T4까지는 질문과 업데이트의 조합 341건이며, 고유 질문은 329개입니다. 341건 전체에서 고정 전이 성능을 평가했고, 이 중 성능 저하는 60건이었습니다. 비교한 9개 분류기 계열 가운데 T0 selection winner, 미래 지표별 상위 모델과 diagnosis에 사용한 모델을 표에 제시했습니다.
 
 | 모델 | T0에서 선택된 정규화 | 미래 AUROC | AUPRC | 재현율 | F1 | 위험도 향상 |
 |---|---|---:|---:|---:|---:|---:|
+| Extra Trees, T0 선택 | robust-z | 0.867 | 0.534 | 0.783 | 0.631 | 3.00배 |
 | Elastic Net | robust-z | **0.886** | 0.642 | 0.833 | 0.633 | 2.90배 |
 | L2 로지스틱 | robust-z | 0.883 | 0.617 | 0.833 | 0.645 | 2.99배 |
 | 2차 로지스틱 | robust-z | 0.860 | 0.558 | 0.817 | **0.649** | **3.06배** |
 | Additive GAM | robust-z | 0.853 | 0.531 | 0.800 | 0.640 | 3.03배 |
-| Extra Trees | robust-z | 0.867 | 0.534 | 0.783 | 0.631 | 3.00배 |
 | RBF-SVM | ECDF | 0.865 | **0.664** | 0.733 | 0.599 | 2.87배 |
 
-T0 F1 기준의 공식 selection winner는 Extra Trees입니다. 미래 구간을 사후 비교하면 Elastic Net의 AUROC, RBF-SVM의 AUPRC와 2차 로지스틱의 F1이 각각 가장 높았습니다. 미래 label을 보고 배포 모델을 다시 고른 것은 아니며, 상위 모델의 cluster bootstrap interval도 겹쳤습니다. 이어지는 diagnosis experiment에는 feature별 risk curve를 확인할 수 있고 frozen transfer 성능도 비슷한 Additive GAM을 post-hoc으로 선택했습니다. 전체 후보와 T0 선택 결과는 [frozen_future_model_summary.csv](results/core4_ml/frozen_future_model_summary.csv)에서 확인할 수 있습니다.
+위험도 향상(risk lift)은 경보 사례에서 성능 저하가 나타난 비율을 전체 평가 집합의 성능 저하 비율로 나눈 값입니다. Extra Trees의 경우 전체 341건 중 60건(17.6%)이 성능 저하였고, 경보 89건 중에서는 47건(52.8%)이었습니다. 경보 밖으로 놓친 성능 저하 13건과 거짓 경보 42건도 남습니다.
+
+T0 F1 기준의 공식 selection winner는 Extra Trees입니다. 미래 구간을 사후 비교하면 Elastic Net의 AUROC, RBF-SVM의 AUPRC와 2차 로지스틱의 F1이 각각 가장 높았습니다. 미래 label을 보고 배포 모델을 다시 고른 것은 아닙니다. GAM과 L2 로지스틱·2차 로지스틱·Extra Trees 사이의 F1 차이는 question-cluster bootstrap으로 검토했으며, 세 비교 모두 95% 구간에 0을 포함했습니다. 이어지는 diagnosis experiment에는 feature별 risk curve를 확인할 수 있고 frozen transfer 성능도 비슷한 Additive GAM을 post-hoc으로 선택했습니다. 전체 후보와 T0 선택 결과는 [frozen_future_model_summary.csv](results/core4_ml/frozen_future_model_summary.csv), 비교 구간은 [paired_model_bootstrap.csv](results/core4_ml/paired_model_bootstrap.csv)에서 확인할 수 있습니다.
 
 ![고정 Core4 Additive GAM 3차원 위험 표면](assets/clark_core4_gam_3d_direct_surface.png)
 
@@ -143,7 +143,7 @@ Detector가 찾은 위험 질문만으로는 failure mechanism을 알 수 없습
 
 ![P1부터 P5까지 evidence intervention ladder](assets/ppt_intervention_probe.png)
 
-Additive GAM은 미래 341건 가운데 실제 성능 저하 60건 중 48건을 경보로 잡았습니다. 탐지에서 끝내지 않고, 양성 60건과 거짓 경보 42건, 크기를 맞춘 정상 대조군 42건을 다시 실행했습니다. 총 144건에서 11,520개의 답변을 생성했습니다.
+Additive GAM의 탐지 결과를 기준으로 양성 60건 전체와 거짓 경보 42건, 크기를 맞춘 정상 대조군 42건을 다시 실행했습니다. 경보에 잡히지 않은 양성도 포함해 탐지 누락 이후의 회복 양상을 함께 확인했습니다. 총 144건에서 11,520개의 답변을 생성했습니다.
 
 Screening confusion matrix와 probe 집계는 [screening_performance.csv](results/detector_linked_probe/screening_performance.csv)와 [진단 보고서](results/detector_linked_probe/report_ko.md)에 공개했습니다.
 
@@ -190,11 +190,12 @@ python -m venv .venv
 .\.venv\Scripts\python.exe scripts\check_public_artifact.py
 ```
 
-이 실행은 직접 만든 합성 데이터와 모의 구성 요소로 파이프라인 연결을 확인합니다. 위 연구 결과를 재현하는 실행은 아닙니다. 전체 재현에는 라이선스를 지켜 준비한 CLARK 원자료와 로컬 DB 스냅샷이 필요합니다. 자세한 내용은 [재현 안내](docs/REPRODUCIBILITY.md)와 [CLARK 데이터 파이프라인](docs/CLARK_DATA_PIPELINE.md)에 정리했습니다.
+이 실행은 직접 만든 합성 데이터와 모의 구성 요소로 파이프라인 연결을 확인합니다. 위 연구 결과를 재현하는 실행은 아닙니다. 전체 재현에는 라이선스를 지켜 준비한 CLARK 원자료와 로컬 DB 스냅샷이 필요합니다. 자세한 내용은 [재현 안내](docs/REPRODUCIBILITY.md)와 [CLARK 데이터 파이프라인](docs/CLARK_DATA_PIPELINE.md)에 정리했습니다. 실험을 읽는 순서는 [Methods](docs/METHODS.md), [결과 해석](docs/RESULTS.md), [집계 파일 안내](results/README.md)입니다.
 
 ## 10. Limitations
 
-- 정답은 오프라인 라벨 생성과 평가에만 사용했습니다. 미래 탐지기의 입력에는 넣지 않았습니다.
+- 미래 탐지기는 최신 정답을 입력으로 사용하지 않습니다. 정답은 T0 학습·선택과 오프라인 평가, 그리고 별도 진단 실험의 개입 근거 구성에 사용했습니다.
+- Core4 평가에는 정답이 시간에 따라 바뀌는 changed question만 포함했습니다. 정답이 유지되는 질문까지 섞인 운영 검수 목록에서의 성능은 추가 확인이 필요합니다.
 - Core4 미래 341건과 초기 186건 실험은 서로 다른 평가 집합이므로 직접적인 성능 향상으로 비교하지 않습니다.
 - 탐지기는 업데이트 전후의 상대 위험을 추정합니다. 처음 보는 답변 하나의 정오를 판정하지 않습니다.
 - 결과는 이 저장소에서 사용한 CLARK, 검색기, 생성 모델과 프롬프트 조건에서 확인했습니다.

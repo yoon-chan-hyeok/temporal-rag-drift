@@ -163,9 +163,9 @@ Additive GAM에는 Core4 robust-z가 선택됐다. GAM spline이 각 변화량�
 | 모델 | T0 선택 정규화 | T0 F1 | Future AUROC | Future AUPRC | Precision | Recall | Future F1 | Risk lift |
 |---|---|---:|---:|---:|---:|---:|---:|---:|
 | Quadratic Logistic | robust-z | 0.692 | 0.860 | 0.558 | 0.538 | 0.817 | **0.649** | 3.060x |
-| L2 Logistic | robust-z | 0.691 | **0.883** | 0.617 | 0.526 | 0.833 | 0.645 | 2.991x |
+| L2 Logistic | robust-z | 0.691 | 0.883 | 0.617 | 0.526 | 0.833 | 0.645 | 2.991x |
 | Additive GAM | robust-z | 0.679 | 0.853 | 0.531 | 0.533 | 0.800 | 0.640 | 3.031x |
-| Elastic Net | robust-z | 0.679 | 0.886 | 0.642 | 0.510 | 0.833 | 0.633 | 2.900x |
+| Elastic Net | robust-z | 0.679 | **0.886** | 0.642 | 0.510 | 0.833 | 0.633 | 2.900x |
 | Extra Trees | robust-z | **0.706** | 0.867 | 0.534 | 0.528 | 0.783 | 0.631 | 3.001x |
 | RBF-SVM | ECDF | 0.654 | 0.865 | **0.664** | 0.506 | 0.733 | 0.599 | 2.874x |
 | HistGradientBoosting | rank-Gaussian | 0.667 | 0.861 | 0.506 | 0.467 | 0.817 | 0.594 | 2.652x |
