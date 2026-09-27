@@ -2,7 +2,7 @@
 
 [한국어](README.md) | [English](README_EN.md)
 
-# Temporal RAG Failure Detection & Diagnosis
+# RAGOps: Temporal RAG Failure Detection & Diagnosis
 
 **DB 업데이트 뒤 답변이 나빠졌을 가능성이 큰 질문을 먼저 고르고, 어떤 RAG 단계를 점검할지 좁히는 연구입니다.**
 
