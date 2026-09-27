@@ -66,10 +66,17 @@ and documents.
 ## Why the design looks this way
 
 The idea is to keep **where the answers move** separate from **how dispersed
-they become**. A move toward the current answer and a confident move toward a
-wrong answer can both produce large shifts. An answer distribution can also
-stay near its old position while becoming less stable. Core4 retains both
-shift and uncertainty change to represent these cases.
+they become**. I initially expected high shift and high uncertainty to identify
+the riskiest questions. Comparing these signals with accuracy changes exposed
+degradation even with low shift. Large shifts could also reflect a correct
+update to the new answer.
+
+Rather than split each signal into high and low bins, I kept four continuous
+features and compared classifiers that could learn their combinations. The
+question was whether those features carried useful degradation signals into
+later updates, not whether one classifier was universally best. Consistently
+wrong answers with little shift or uncertainty remain difficult to observe;
+the detector prioritizes review rather than certifying correctness.
 
 The detector and threshold are frozen at the first update, `T0`, because new
 gold answers would not be available for refitting after each later update.
